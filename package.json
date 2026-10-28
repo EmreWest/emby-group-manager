@@ -1,0 +1,19 @@
+{
+  "name": "emby-group-manager",
+  "version": "1.0.0",
+  "description": "Zentrale Verwaltung von Emby-Benutzern: Bibliotheksgruppen, Kinderprofile, Aperture-Bibliotheken und Homescreen-Vorlagen mit Rotation.",
+  "type": "module",
+  "private": true,
+  "license": "MIT",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "start": "node server/index.js",
+    "dev": "DATA_DIR=./data node --watch server/index.js",
+    "test": "node --test test/*.test.js"
+  },
+  "dependencies": {
+    "pg": "8.13.1"
+  }
+}
