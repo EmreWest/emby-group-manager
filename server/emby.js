@@ -100,6 +100,13 @@ export const emby = {
   deleteHomeSections: (userId, ids) => request('POST', `/Users/${userId}/HomeSections/Delete`, { body: { Ids: ids } }),
   moveHomeSections: (userId, ids, newIndex) => request('POST', `/Users/${userId}/HomeSections/Move`, { body: { Ids: ids, NewIndex: newIndex } }),
 
+  // What a row actually shows for this user (same call the Emby apps make). Section ids of the stored rows work
+  // here, except latestmediablock, which Emby expands into one "latestmedia_<library>" row per library.
+  async sectionItemCount(userId, sectionId) {
+    const r = await request('GET', `/Users/${userId}/Sections/${encodeURIComponent(sectionId)}/Items`, { query: { Limit: 1, EnableTotalRecordCount: true } })
+    return r?.TotalRecordCount ?? r?.Items?.length ?? 0
+  },
+
   // ---- user settings (former DisplayPreferences "usersettings", per user since 4.9.0.23) ----
   userSettings: (userId) => request('GET', `/UserSettings/${userId}`),
   updateUserSettingsPartial: (userId, partial) => request('POST', `/UserSettings/${userId}/Partial`, { body: partial }),

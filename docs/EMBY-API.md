@@ -12,7 +12,8 @@ Wie geprüft wurde:
   `users/parentalcontroltab.js`). Das zeigt, was die Emby-Oberfläche selbst sendet, wenn man dort
   etwas ändert.
 - **Emby.Api.dll / MediaBrowser.Model.dll**: Routen-Attribute und Datenmodelle über die .NET-
-  Metadaten ausgelesen (kein Emby-Code ausgeführt).
+  Metadaten ausgelesen; `ContentService` (Startseiten-Zeilen und deren Inhalte) dekompiliert und
+  gelesen (kein Emby-Code ausgeführt).
 - **Kein Live-Test gegen einen Emby-Server.** Das Ausführen des heruntergeladenen Servers war in
   dieser Umgebung nicht möglich. Deshalb hat die App die Seite **Diagnose**: Snapshot eines
   Testbenutzers, Änderung in der Emby-Oberfläche, zweiter Snapshot, Vergleich. Damit lässt sich
@@ -30,6 +31,8 @@ Wie geprüft wurde:
 | Bibliotheksfilter einer Zeile | `ExcludedFolders` = **Item-Ids** der Ansichten (`/Users/{id}/Views`), die nicht gezeigt werden | `sectioneditor.js` |
 | Neue Zeile | `POST /Users/{id}/HomeSections` ohne `Id`; Emby vergibt die Id selbst und hängt hinten an | Ultimate Collections, `EmbyHomeScreens.cs` (dort am 12.10.2026 per REST getestet) |
 | Benutzer ohne gespeicherte Zeilen | gespeichert ist eine **leere** Liste; `GET ?IsEditMode=true` liefert dann Embys Legacy-Standard (Meine Medien, Weiterschauen, Weiterhören, Jetzt im TV, Neu hinzugefügt). Die REST-Schicht speichert diese Standardzeilen vor der ersten Änderung (`EnsureSavedSections`). | `EmbyHomeScreens.cs` (Ultimate Collections, getestet 14.10.2026), Methodennamen `GetLegacyHomeSections`/`EnsureSavedSections` in `Emby.Api.dll` |
+| Inhalte von „Weiterschauen“ | Server wertet nur `ExcludedFolders`, `ItemTypes` (leer = Movie, Episode, MusicVideo, Video) und `IncludeNextUpInResume` aus; Sortierung ist immer „zuletzt gesehen“. Sind alle Video-Bibliotheken ausgeschlossen, ist die Zeile leer. Die App wendet „In ‚Neu hinzugefügt‘ ausblenden“ deshalb nicht auf Weiterschauen an | `Emby.Api.dll` `ContentService.GetItems` / `BaseContentService.GetResumeItems` (dekompiliert) |
+| Was eine Zeile tatsächlich zeigt | `GET /Users/{id}/Sections/{SectionId}/Items` – die App zeigt die Anzahl pro Zeile auf der Benutzerseite | dto. |
 | Sortierung „Zufällig“ | `SortBy: "Random"`; der Client schickt beim Laden der Zeile einen `RandomSeed` an `GET /Users/{id}/Sections/{SectionId}/Items` → bei jedem Aufruf neu gemischt | `baseitemcontroller.js` (Option `Random` ab 4.8.0.11), `apiclient.js` `getHomeScreenSectionItems` |
 | „Zufällig“ bei Kollektionszeilen | Die Emby-UI bietet für `boxset`-Zeilen **nur** Kollektionsreihenfolge, Titel, Hinzugefügt, Jahr, Bewertung, Laufzeit an. `SortBy` ist aber ein freies Textfeld. **Ob der Server `Random` hier mischt, ist nicht verifiziert** → per Diagnose prüfen | `getPlaylistOrCollectionSortMenuOptions("BoxSet")` |
 

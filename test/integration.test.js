@@ -160,6 +160,20 @@ test('templates: apply to a user with only legacy defaults, order and aperture p
   assert.deepEqual(again.results.map((x) => x.status), ['unchanged', 'unchanged'])
 })
 
+test('hiding libraries in "Neu hinzugefügt" does not empty Weiterschauen; user page shows item counts', async () => {
+  const st = mock.state
+  const t = await call('GET', `/api/templates/${templateId}`)
+  t.config.latestHidden = [st.movies.Guid, st.series.Guid, st.kids.Guid, '@aperture:movies', '@aperture:series']
+  await call('PUT', `/api/templates/${templateId}`, t)
+  await call('POST', `/api/layout-groups/${layoutId}/apply`, { force: true })
+  const rows = st.homeSections.get(st.emre.Id)
+  assert.deepEqual(rows.find((s) => s.SectionType === 'resume').ExcludedFolders, [])
+  assert.ok(rows.find((s) => s.SectionType === 'latestmediablock').ExcludedFolders.includes(st.movies.ItemId))
+  const detail = await call('GET', `/api/users/${st.emre.Id}`)
+  assert.equal(detail.homescreen.rows.find((r) => r.type === 'resume').items, 2)
+  assert.equal(detail.homescreen.rows.find((r) => r.type === 'latestmediablock').items, null)
+})
+
 test('preview for tomorrow / next week and reroll', async () => {
   const st = mock.state
   for (const when of ['today', 'tomorrow', 'nextweek']) {

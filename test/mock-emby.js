@@ -134,6 +134,13 @@ export function startMockEmby(state = createMockState(), apiKey = 'testkey') {
       state.homeSections.set(m[1], rest)
       return send(204)
     }
+    if ((m = /^\/Users\/(\w+)\/Sections\/([^/]+)\/Items$/.exec(p))) {
+      // resume rows: 2 items in progress unless every video library is excluded (as GetResumeItems does)
+      const s = (sections(userById(m[1])) || legacy(userById(m[1]))).find((x) => x.Id === decodeURIComponent(m[2]))
+      if (!s) return send(500, { error: 'section not found' })
+      const visible = views(userById(m[1])).filter((v) => ['movies', 'tvshows'].includes(v.CollectionType) && !(s.ExcludedFolders || []).includes(v.Id))
+      return send(200, { Items: [], TotalRecordCount: s.SectionType === 'resume' ? (visible.length ? 2 : 0) : 5 })
+    }
     if ((m = /^\/UserSettings\/(\w+)$/.exec(p))) return send(200, state.userSettings.get(m[1]) || {})
     if ((m = /^\/UserSettings\/(\w+)\/Partial$/.exec(p))) {
       const cur = state.userSettings.get(m[1]) || {}

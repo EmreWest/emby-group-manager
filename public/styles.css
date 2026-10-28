@@ -99,6 +99,8 @@ label.field > span { display: block; font-weight: 600; margin-bottom: 4px; }
 label.field small, .hint { display: block; color: var(--muted); font-size: 12px; margin-top: 3px; }
 .row-fields { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 0 14px; }
 .check { display: flex; gap: 8px; align-items: center; padding: 3px 0; }
+.check-tools { display: inline-flex; gap: 4px; margin-top: 4px; text-transform: none; letter-spacing: 0; }
+.checklist > .check-tools { grid-column: 1 / -1; margin: 0 0 6px; }
 .checklist { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 2px 14px; max-height: 340px; overflow: auto; border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; background: var(--panel-2); }
 
 table { width: 100%; border-collapse: collapse; }

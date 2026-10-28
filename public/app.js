@@ -136,6 +136,25 @@ function onActions(root, actions) {
 
 const badge = (text, cls = '') => `<span class="badge ${cls}">${esc(text)}</span>`
 
+// "Alle" / "Keine" for a .checklist (placed inside it) or, with `col`, for one checkbox column of a table.
+const checkTools = (col = '') =>
+  `<span class="check-tools"><button type="button" class="small" data-check="all"${col ? ` data-col="${esc(col)}"` : ''}>Alle</button><button type="button" class="small" data-check="none"${col ? ` data-col="${esc(col)}"` : ''}>Keine</button></span>`
+
+// Ticks each box like a click would, so the page's data-bind handlers update the draft.
+document.addEventListener('click', (e) => {
+  const b = e.target.closest('[data-check]')
+  if (!b) return
+  e.preventDefault()
+  const on = b.dataset.check === 'all'
+  const scope = b.closest(b.dataset.col ? 'table' : '.checklist')
+  const boxes = $$(b.dataset.col ? 'input[type=checkbox][data-bind]' : 'input[type=checkbox]', scope).filter((c) => !b.dataset.col || c.dataset.bind === b.dataset.col)
+  for (const c of boxes) {
+    if (c.disabled || c.checked === on) continue
+    c.checked = on
+    c.dispatchEvent(new Event('change', { bubbles: true }))
+  }
+})
+
 // ---------------------------------------------------------------- constants
 
 const SORTS = [
@@ -374,7 +393,9 @@ async function pageUserDetail(view, userId) {
       <div class="card"><h2>Aktueller Homescreen</h2>
         ${u.homescreen.error ? `<div class="alert danger">${esc(u.homescreen.error)}</div>` : `
           ${u.homescreen.legacy ? '<div class="alert info">Keine gespeicherten Zeilen – Emby zeigt seine Standardwerte.</div>' : ''}
-          <ol>${u.homescreen.rows.map((r) => `<li>${esc(r.label)} <span class="muted small">${esc(r.type)}${r.sortBy ? ' · ' + esc(r.sortBy) : ''}</span></li>`).join('')}</ol>
+          <ol>${u.homescreen.rows.map((r) => `<li>${esc(r.label)} <span class="muted small">${esc(r.type)}${r.sortBy ? ' · ' + esc(r.sortBy) : ''}${r.excluded ? ` · ${r.excluded} Bibliothek(en) ausgeschlossen` : ''}</span>
+            ${r.items == null ? '' : r.items ? badge(`${r.items} Einträge`, 'ok') : badge('leer – Emby blendet die Zeile aus', 'warn')}</li>`).join('')}</ol>
+          <p class="hint">Einträge = was Emby diesem Benutzer in der Zeile gerade liefert. „Weiterschauen“ ist leer, solange nichts angefangen ist.</p>
           ${u.layoutState ? `<p class="small muted">Zuletzt von diesem Tool geschrieben: ${fmtDate(u.layoutState.applied_at)}</p>` : ''}`}
       </div>
     </div>
@@ -529,15 +550,16 @@ async function pageLibraryGroupEdit(view, groupId) {
           <small>Bei mehreren Gruppen gilt die strengste. Gilt auch für die Aperture-Bibliotheken.</small></label>
         <label class="check"><input type="checkbox" id="block-unrated"${checked(blockUnratedOn)}> Nicht bewertete Inhalte blockieren</label>
         <div id="unrated-types" class="checklist" style="${blockUnratedOn ? '' : 'display:none'}">
+          ${checkTools()}
           ${meta.unratedTypes.map((t) => `<label class="check"><input type="checkbox" data-bind="blockUnrated" data-list-value="${t}"${checked(draft.blockUnrated.includes(t))}> ${esc(UNRATED_LABELS[t] || t)}</label>`).join('')}
         </div>
         <label class="field" style="margin-top:12px"><span>Gesperrte Tags</span><input data-bind="blockedTags" data-type="list" value="${esc(draft.blockedTags.join(', '))}"><small>Kommagetrennt</small></label>
       </div>
       <div class="card"><h2>Bibliotheken</h2>
-        <div class="checklist">${libraries.filter((l) => !l.aperture).map((l) => `<label class="check"><input type="checkbox" data-bind="libraryGuids" data-list-value="${esc(l.guid)}"${checked(draft.libraryGuids.includes(l.guid))}> ${esc(l.name)}</label>`).join('')}</div>
+        <div class="checklist">${checkTools()}${libraries.filter((l) => !l.aperture).map((l) => `<label class="check"><input type="checkbox" data-bind="libraryGuids" data-list-value="${esc(l.guid)}"${checked(draft.libraryGuids.includes(l.guid))}> ${esc(l.name)}</label>`).join('')}</div>
         <p class="hint">Aperture-Bibliotheken erscheinen hier nicht: jedes Mitglied bekommt automatisch nur seine eigenen.</p>
         <h2 style="margin-top:18px">Mitglieder</h2>
-        <div class="checklist">${users.map((u) => `<label class="check"><input type="checkbox" data-bind="userIds" data-list-value="${esc(u.id)}"${checked(draft.userIds.includes(u.id))}> ${esc(u.name)} ${u.isAdmin ? badge('Admin', 'info') : ''}</label>`).join('')}</div>
+        <div class="checklist">${checkTools()}${users.map((u) => `<label class="check"><input type="checkbox" data-bind="userIds" data-list-value="${esc(u.id)}"${checked(draft.userIds.includes(u.id))}> ${esc(u.name)} ${u.isAdmin ? badge('Admin', 'info') : ''}</label>`).join('')}</div>
       </div>
     </div>`
   bindInputs(view, draft)
@@ -649,7 +671,7 @@ async function pageTemplateEdit(view, templateId) {
         <label class="field"><span>Bibliotheken</span><select data-bind="config.rows.${i}.libraries.mode" data-rerender>${options([['all', 'alle'], ['only', 'nur ausgewählte'], ['except', 'alle außer ausgewählten']], r.libraries.mode)}</select></label>
       </div>
       ${r.sectionType === 'resume' ? `<label class="check"><input type="checkbox" data-bind="config.rows.${i}.includeNextUp"${checked(r.includeNextUp)}> „Als Nächstes“ in Weiterschauen einbeziehen</label>` : ''}
-      ${r.libraries.mode !== 'all' ? `<div class="checklist">${libChoices.map(([v, l]) => `<label class="check"><input type="checkbox" data-bind="config.rows.${i}.libraries.guids" data-list-value="${esc(v)}"${checked(r.libraries.guids.includes(v))}> ${esc(l)}</label>`).join('')}</div>` : ''}`
+      ${r.libraries.mode !== 'all' ? `<div class="checklist">${checkTools()}${libChoices.map(([v, l]) => `<label class="check"><input type="checkbox" data-bind="config.rows.${i}.libraries.guids" data-list-value="${esc(v)}"${checked(r.libraries.guids.includes(v))}> ${esc(l)}</label>`).join('')}</div>` : ''}`
     }
     if (r.kind === 'aperture') {
       return `<div class="row-fields">
@@ -696,7 +718,7 @@ async function pageTemplateEdit(view, templateId) {
     const order = [...c.libraryOrder.filter((g) => libChoices.some(([v]) => v === g)), ...libChoices.map(([v]) => v).filter((v) => !c.libraryOrder.includes(v))]
     c.libraryOrder = order
     return `<p class="muted">Reihenfolge der Bibliotheken in „Meine Medien“ und im Menü. Platzhalter werden pro Benutzer durch seine Aperture-Bibliotheken ersetzt.</p>
-      <table><thead><tr><th>#</th><th>Bibliothek</th><th>In „Meine Medien“ ausblenden</th><th>In „Neu hinzugefügt“ & Co. ausblenden</th><th>Startansicht</th><th></th></tr></thead><tbody>
+      <table><thead><tr><th>#</th><th>Bibliothek</th><th>In „Meine Medien“ ausblenden<br>${checkTools('config.myMediaHidden')}</th><th>In „Neu hinzugefügt“ ausblenden<br>${checkTools('config.latestHidden')}</th><th>Startansicht</th><th></th></tr></thead><tbody>
       ${order.map((v, i) => {
         const lib = libs.find((l) => l.guid === v)
         const landing = LANDING[lib?.collectionType] || (v === '@aperture:series' ? LANDING.tvshows : v === '@aperture:movies' ? LANDING.movies : [['', 'Standard'], ['folders', 'Ordner']])
@@ -889,7 +911,7 @@ async function pageLayoutGroupEdit(view, groupId) {
         <div id="lg-result"></div>
       </div>
       <div class="card"><h2>Mitglieder</h2>
-        <div class="checklist">${users.map((u) => `<label class="check"><input type="checkbox" data-bind="userIds" data-list-value="${esc(u.id)}"${checked(draft.userIds.includes(u.id))}> ${esc(u.name)} ${otherGroup(u.id) ? `<span class="small muted">(jetzt in „${esc(otherGroup(u.id).name)}“)</span>` : ''}</label>`).join('')}</div>
+        <div class="checklist">${checkTools()}${users.map((u) => `<label class="check"><input type="checkbox" data-bind="userIds" data-list-value="${esc(u.id)}"${checked(draft.userIds.includes(u.id))}> ${esc(u.name)} ${otherGroup(u.id) ? `<span class="small muted">(jetzt in „${esc(otherGroup(u.id).name)}“)</span>` : ''}</label>`).join('')}</div>
         <p class="hint">Ein Benutzer kann nur in einer Layout-Gruppe sein – Anhaken verschiebt ihn hierher.</p>
       </div>
     </div>`
@@ -1061,7 +1083,7 @@ async function pageSettings(view) {
         <label class="field"><span>Standard-Layout-Gruppe</span><select data-bind="defaultLayoutGroupId" data-type="number">${opt('', '– keine –', draft.defaultLayoutGroupId ?? '')}${ygs.map((g) => opt(g.id, g.name, draft.defaultLayoutGroupId)).join('')}</select>
           <small>Neue Benutzer bekommen beim nächsten Abgleich diese Gruppen; Rechte und Startseite werden direkt angewendet.</small></label>
         <h3>Vorauswahl „nicht bewertete Inhalte blockieren“</h3>
-        <div class="checklist">${meta.unratedTypes.map((t) => `<label class="check"><input type="checkbox" data-bind="defaultUnratedTypes" data-list-value="${t}"${checked(draft.defaultUnratedTypes.includes(t))}> ${esc(UNRATED_LABELS[t] || t)}</label>`).join('')}</div>
+        <div class="checklist">${checkTools()}${meta.unratedTypes.map((t) => `<label class="check"><input type="checkbox" data-bind="defaultUnratedTypes" data-list-value="${t}"${checked(draft.defaultUnratedTypes.includes(t))}> ${esc(UNRATED_LABELS[t] || t)}</label>`).join('')}</div>
       </div>
       <div class="card"><h2>Verbindungen (aus Umgebungsvariablen)</h2>
         <dl class="kv"><dt>EMBY_URL</dt><dd>${esc(s.env.embyUrl || '–')}</dd><dt>APERTURE_URL</dt><dd>${esc(s.env.apertureUrl || '–')}</dd><dt>APERTURE_DB_URL</dt><dd>${s.env.apertureDb ? 'gesetzt' : '–'}</dd><dt>ADMIN_PASSWORD</dt><dd>${s.env.adminPassword ? 'gesetzt' : '–'}</dd></dl>

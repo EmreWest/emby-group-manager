@@ -110,12 +110,15 @@ api.get('/api/users/:id', async ({ params }) => {
   const state = await loadState()
   const user = await emby.user(params.id)
   const [sections, preview] = await Promise.all([emby.homeSections(params.id).catch((e) => ({ error: e.message })), Promise.resolve(previewUsers({ ...state, users: [user] }))])
+  const counts = Array.isArray(sections)
+    ? await Promise.all(sections.map((s) => (s.SectionType === 'latestmediablock' ? null : emby.sectionItemCount(params.id, s.Id).catch(() => null))))
+    : []
   return {
     id: user.Id,
     name: user.Name,
     policy: preview[0],
     effective: effectiveRights(state, user),
-    homescreen: Array.isArray(sections) ? { legacy: isLegacy(sections), rows: sections.map((s) => ({ id: s.Id, label: sectionLabel(s), type: s.SectionType, sortBy: s.SortBy })) } : sections,
+    homescreen: Array.isArray(sections) ? { legacy: isLegacy(sections), rows: sections.map((s, i) => ({ id: s.Id, label: sectionLabel(s), type: s.SectionType, sortBy: s.SortBy, items: counts[i], excluded: (s.ExcludedFolders || []).length })) } : sections,
     layoutState: layoutState(params.id),
     backups: listBackups(params.id),
   }

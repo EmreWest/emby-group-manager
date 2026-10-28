@@ -20,7 +20,10 @@ import { inSeason } from './seasons.js'
 const norm = (s) => String(s || '').toLowerCase().replace(/-/g, '')
 const uniq = (a) => [...new Set(a)]
 const viewKey = (v) => v.Guid || v.Id
-const LATEST_LIKE = ['latestmediablock', 'resume', 'resumeaudio', 'latestmoviereleases', 'latestepisodereleases', 'nextup']
+// Rows the template's "hidden in Neu hinzugefügt" list applies to. Emby's legacy defaults also applied
+// LatestItemsExcludes to Weiterschauen, but a resume row with every video library excluded comes back empty
+// (BaseContentService.GetResumeItems), so resume rows are filtered only by their own library setting.
+const LATEST_LIKE = ['latestmediablock', 'latestmoviereleases', 'latestepisodereleases']
 const EDITABLE = ['SectionType', 'CustomName', 'Subtitle', 'ViewType', 'ImageType', 'DisplayMode', 'ScrollDirection', 'ParentId', 'SortBy', 'SortOrder', 'ItemTypes', 'IncludeNextUpInResume', 'ExcludedFolders', 'Query', 'CardSizeOffset', 'RefreshInterval']
 const LEGACY_IDS = new Set(['smalllibrarytiles', 'librarybuttons', 'librarytiles', 'resume', 'resumeaudio', 'livetv', 'onnow', 'latestmedia', 'latestmediablock', 'nextup', 'none', 'activerecordings', 'latestmoviereleases', 'latestepisodereleases', 'collections', 'playlists'])
 const CONFIG_KEYS = ['OrderedViews', 'MyMediaExcludes', 'LatestItemsExcludes', 'HidePlayedInLatest']
