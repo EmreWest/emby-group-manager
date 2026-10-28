@@ -54,6 +54,7 @@ export function startMockEmby(state = createMockState(), apiKey = 'testkey') {
   const views = (u) => {
     const p = u.Policy
     const vs = state.folders.filter((f) => p.EnableAllFolders || p.EnabledFolders.includes(f.Guid)).map((f) => ({ Id: f.ItemId, Guid: f.Guid, Name: f.Name, CollectionType: f.CollectionType }))
+    vs.push({ Id: 'livetv1', Guid: 'aaaabbbbccccddddeeeeffff00001111', Name: 'Live TV', CollectionType: 'livetv' })
     const order = u.Configuration.OrderedViews || []
     return vs.sort((a, b) => (order.indexOf(a.Guid) + 1 || 999) - (order.indexOf(b.Guid) + 1 || 999))
   }

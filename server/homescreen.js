@@ -41,6 +41,19 @@ function expandTokens(state, userId, tokens) {
     t.startsWith('@aperture:') ? state.libraries.filter((l) => l.aperture?.ownerId === userId && l.aperture.mediaType === t.slice(10)).map((l) => l.guid) : [t])
 }
 
+// Library tokens -> the user's views. Tokens: a library Guid, '@aperture:movies|series' (the user's own), or
+// '@type:livetv|boxsets|playlists' for the views that are not libraries (Live TV, Kollektionen, Wiedergabelisten).
+function matchViews(state, userId, views, tokens) {
+  const out = []
+  for (const t of tokens) {
+    const hits = t.startsWith('@type:')
+      ? views.filter((v) => String(v.CollectionType || '').toLowerCase() === t.slice(6))
+      : views.filter((v) => expandTokens(state, userId, [t]).some((g) => norm(g) === norm(v.Guid) || norm(g) === norm(v.Id)))
+    for (const v of hits) if (!out.includes(v)) out.push(v)
+  }
+  return out
+}
+
 function viewIdsFor(views, guids) {
   const set = new Set(guids.map(norm))
   return views.filter((v) => set.has(norm(v.Guid)) || set.has(norm(v.Id))).map((v) => v.Id)
@@ -78,6 +91,7 @@ export async function resolveTemplate(template, { state, user = null, views = nu
   const seasonal = await activeSeasonals(rot.seasonal, cctx, { date, today, userId, minRatio: rot.minVisibleRatio })
   const slots = await fillSlots(template, cctx, { userId, ranked, seasonal })
   const expand = (tokens) => expandTokens(state, userId, tokens)
+  const viewIds = (tokens) => matchViews(state, userId, views || [], tokens).map((v) => v.Id)
   let slotIndex = 0
   const rows = []
   const add = (row, section, label, extra = {}) => rows.push({ rowId: row.id, kind: row.kind, label, section, ...extra })
@@ -90,17 +104,17 @@ export async function resolveTemplate(template, { state, user = null, views = nu
       if (views) {
         let excluded = []
         if (row.libraries.mode === 'only') {
-          const keep = new Set(viewIdsFor(views, expand(row.libraries.guids)))
+          const keep = new Set(viewIds(row.libraries.guids))
           if (!keep.size) {
             add(row, null, label, { note: 'Keine der gewählten Bibliotheken ist für diesen Benutzer sichtbar' })
             continue
           }
           excluded = views.filter((v) => !keep.has(v.Id)).map((v) => v.Id)
         } else if (row.libraries.mode === 'except') {
-          excluded = viewIdsFor(views, expand(row.libraries.guids))
+          excluded = viewIds(row.libraries.guids)
         }
-        if (row.sectionType === 'userviews') excluded.push(...viewIdsFor(views, expand(cfg.myMediaHidden)))
-        if (LATEST_LIKE.includes(row.sectionType)) excluded.push(...viewIdsFor(views, expand(cfg.latestHidden)))
+        if (row.sectionType === 'userviews') excluded.push(...viewIds(cfg.myMediaHidden))
+        if (LATEST_LIKE.includes(row.sectionType)) excluded.push(...viewIds(cfg.latestHidden))
         s.ExcludedFolders = uniq(excluded).sort()
       }
       add(row, s, label)
@@ -170,15 +184,18 @@ export async function resolveTemplate(template, { state, user = null, views = nu
   let userSettings = null
   if (user && views) {
     const ordered = []
-    for (const guid of expand(cfg.libraryOrder)) {
-      const v = views.find((x) => norm(x.Guid) === norm(guid) || norm(x.Id) === norm(guid))
-      if (v && !ordered.includes(viewKey(v))) ordered.push(viewKey(v))
-    }
+    for (const token of cfg.libraryOrder) for (const v of matchViews(state, userId, views, [token])) if (!ordered.includes(viewKey(v))) ordered.push(viewKey(v))
     for (const v of views) if (!ordered.includes(viewKey(v))) ordered.push(viewKey(v))
-    const keysFor = (tokens) => uniq(expand(tokens).flatMap((g) => views.filter((v) => norm(v.Guid) === norm(g) || norm(v.Id) === norm(g)).map(viewKey)))
+    // Emby compares MyMediaExcludes / OrderedViews with the folder's IdString (UserViewManager.GetUserViews), which
+    // is what the views list returns as Guid; Id is the fallback, as in Emby's own settings page.
+    const keysFor = (tokens) => matchViews(state, userId, views, tokens).map(viewKey)
     configuration = { OrderedViews: ordered, MyMediaExcludes: keysFor(cfg.myMediaHidden), LatestItemsExcludes: keysFor(cfg.latestHidden), HidePlayedInLatest: cfg.hidePlayedInLatest }
     userSettings = {}
-    for (const [token, value] of Object.entries(cfg.landing)) for (const key of keysFor([token])) userSettings[`landing-${key}`] = value || null
+    for (const [token, value] of Object.entries(cfg.landing)) {
+      // Live TV's landing key is fixed ("landing-livetv"), the others use the library's Guid (settings/homescreen.js)
+      const keys = token === '@type:livetv' ? ['livetv'] : keysFor([token])
+      for (const key of keys) userSettings[`landing-${key}`] = value || null
+    }
     if (cfg.tvHome) userSettings.tvhome = cfg.tvHome
   }
 
@@ -319,7 +336,9 @@ export async function templateFromUser(state, userId) {
   const [user, sections, views, settings] = await Promise.all([emby.user(userId), emby.homeSections(userId), emby.userViews(userId), emby.userSettings(userId).catch(() => ({}))])
   const own = state.libraries.filter((l) => l.aperture?.ownerId === userId)
   const tokenFor = (key) => {
+    if (key === 'livetv') return '@type:livetv'
     const v = views.find((x) => norm(x.Id) === norm(key) || norm(x.Guid) === norm(key))
+    if (v && ['livetv', 'boxsets', 'playlists'].includes(String(v.CollectionType).toLowerCase())) return `@type:${String(v.CollectionType).toLowerCase()}`
     const guid = v ? v.Guid || v.Id : key
     const ap = own.find((l) => norm(l.guid) === norm(guid))
     return ap ? `@aperture:${ap.aperture.mediaType}` : guid

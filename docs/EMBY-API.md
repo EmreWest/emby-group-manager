@@ -41,7 +41,8 @@ Wie geprüft wurde:
 | Was | Wo | Quelle |
 |---|---|---|
 | Bibliotheksreihenfolge | `User.Configuration.OrderedViews` (Werte: `Guid` bzw. `Id` der Ansicht) über `POST /Users/{id}/Configuration/Partial` | `homescreen.js` `onUserViewsMovedToNewIndex` |
-| „Meine Medien“ ausblenden | `Configuration.MyMediaExcludes` (ab 4.10 blendet die UI diesen Schalter aus; maßgeblich sind die `ExcludedFolders` der `userviews`-Zeile – die App setzt beides) | `homescreen.js` `renderPerLibrarySettings` |
+| „Meine Medien“ ausblenden | `Configuration.MyMediaExcludes` (ab 4.10 blendet die UI diesen Schalter aus). Der Server wendet die Liste **immer** an, auf die „Meine Medien“-Zeile und das Menü, verglichen mit der `IdString` (= `Guid` aus der Ansichtsliste); dazu kommen die `ExcludedFolders` der Zeile | `homescreen.js` `renderPerLibrarySettings`, `UserViewManager.GetUserViews` (dekompiliert) |
+| Ansichten, die keine Bibliotheken sind | Live TV, Kollektionen, Wiedergabelisten erscheinen in `/Users/{id}/Views?IncludeHidden=true&AllowDynamicChildren=false` (so fragt der Emby-Editor) und können wie Bibliotheken ausgeschlossen werden; Startansicht von Live TV unter `landing-livetv` | `sectioneditor.js`, `settings/homescreen.js` |
 | „In anderen Startseitenbereichen anzeigen“ | `Configuration.LatestItemsExcludes` | dto. |
 | Startansicht pro Bibliothek | Benutzereinstellung `landing-<Guid>` über `POST /UserSettings/{id}/Partial` | `homescreen.js` (`data-usersettingsfield="landing-…"`) |
 | TV-Layout | Benutzereinstellung `tvhome` | `usersettingsbuilder.js` |

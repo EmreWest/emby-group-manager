@@ -137,8 +137,8 @@ function onActions(root, actions) {
 const badge = (text, cls = '') => `<span class="badge ${cls}">${esc(text)}</span>`
 
 // "Alle" / "Keine" for a .checklist (placed inside it) or, with `col`, for one checkbox column of a table.
-const checkTools = (col = '') =>
-  `<span class="check-tools"><button type="button" class="small" data-check="all"${col ? ` data-col="${esc(col)}"` : ''}>Alle</button><button type="button" class="small" data-check="none"${col ? ` data-col="${esc(col)}"` : ''}>Keine</button></span>`
+const checkTools = (col = '', [allLabel, noneLabel] = ['Alle', 'Keine']) =>
+  `<span class="check-tools"><button type="button" class="small" data-check="all"${col ? ` data-col="${esc(col)}"` : ''}>${allLabel}</button><button type="button" class="small" data-check="none"${col ? ` data-col="${esc(col)}"` : ''}>${noneLabel}</button></span>`
 
 // Ticks each box like a click would, so the page's data-bind handlers update the draft.
 document.addEventListener('click', (e) => {
@@ -178,7 +178,12 @@ const LANDING = {
   movies: [['', 'Filme'], ['suggestions', 'Vorschläge'], ['favorites', 'Favoriten'], ['genres', 'Genres'], ['collections', 'Kollektionen'], ['tags', 'Tags'], ['folders', 'Ordner']],
   tvshows: [['', 'Serien'], ['suggestions', 'Vorschläge'], ['favorites', 'Favoriten'], ['collections', 'Kollektionen'], ['genres', 'Genres'], ['tags', 'Tags'], ['studios', 'Sender'], ['folders', 'Ordner']],
   music: [['', 'Vorschläge'], ['albums', 'Alben'], ['albumartists', 'Album-Interpreten'], ['artists', 'Interpreten'], ['playlists', 'Wiedergabelisten'], ['genres', 'Genres'], ['songs', 'Titel'], ['folders', 'Ordner']],
+  livetv: [['', 'Vorschläge'], ['guide', 'TV-Programm'], ['channels', 'Kanäle'], ['tags', 'Tags'], ['recordings', 'Aufnahmen'], ['schedule', 'Zeitplan'], ['series', 'Serien']],
 }
+// Views that are not libraries; the server matches them by type (see matchViews in server/homescreen.js).
+const SPECIAL_VIEWS = [['@type:livetv', 'Live TV'], ['@type:boxsets', 'Kollektionen'], ['@type:playlists', 'Wiedergabelisten']]
+// Is library token v shown in a row with this library filter?
+const libShown = (lib, v) => (lib.mode === 'all' ? true : lib.mode === 'except' ? !lib.guids.includes(v) : lib.guids.includes(v))
 const WEEKDAYS = ['Sonntag', 'Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag']
 const APERTURE_TOKENS = [['@aperture:movies', 'Eigene Aperture-Filme (Platzhalter)'], ['@aperture:series', 'Eigene Aperture-Serien (Platzhalter)']]
 
@@ -635,7 +640,7 @@ async function pageTemplateEdit(view, templateId) {
   ])
   const draft = clone(t)
   const libs = libraries.filter((l) => !l.aperture)
-  const libChoices = [...APERTURE_TOKENS, ...libs.map((l) => [l.guid, l.name])]
+  const libChoices = [...APERTURE_TOKENS, ...libs.map((l) => [l.guid, l.name]), ...SPECIAL_VIEWS]
   const libName = (token) => libChoices.find(([v]) => v === token)?.[1] || token
   const collections = cols.collections
   let openRow = null
@@ -668,10 +673,12 @@ async function pageTemplateEdit(view, templateId) {
         ${r.sectionType === 'items' ? `<label class="field"><span>Medientyp</span><select data-bind="config.rows.${i}.itemTypes" data-type="list">${meta.itemTypes.map((x) => opt(x, ITEM_TYPE_LABELS[x] || x, r.itemTypes.join(','))).join('')}</select></label>` : ''}
         ${['items', 'collections', 'playlists'].includes(r.sectionType) ? sortSelect(r, i) : ''}
         ${commonFields(r, i, { view: r.sectionType === 'userviews' ? [['', 'Karten'], ['buttons', 'Schaltflächen']] : [['', 'Karten'], ['spotlight', 'Spotlight']] })}
-        <label class="field"><span>Bibliotheken</span><select data-bind="config.rows.${i}.libraries.mode" data-rerender>${options([['all', 'alle'], ['only', 'nur ausgewählte'], ['except', 'alle außer ausgewählten']], r.libraries.mode)}</select></label>
       </div>
       ${r.sectionType === 'resume' ? `<label class="check"><input type="checkbox" data-bind="config.rows.${i}.includeNextUp"${checked(r.includeNextUp)}> „Als Nächstes“ in Weiterschauen einbeziehen</label>` : ''}
-      ${r.libraries.mode !== 'all' ? `<div class="checklist">${checkTools()}${libChoices.map(([v, l]) => `<label class="check"><input type="checkbox" data-bind="config.rows.${i}.libraries.guids" data-list-value="${esc(v)}"${checked(r.libraries.guids.includes(v))}> ${esc(l)}</label>`).join('')}</div>` : ''}`
+      <label class="field" style="margin:10px 0 4px"><span>In dieser Zeile angezeigte Bibliotheken</span></label>
+      <div class="checklist" data-rowlib="${i}">${checkTools()}${libChoices.map(([v, l]) => `<label class="check"><input type="checkbox" data-rowlib-value="${esc(v)}"${checked(libShown(r.libraries, v))}> ${esc(l)}</label>`).join('')}</div>
+      <label class="check"><input type="checkbox" data-rowlib-auto="${i}"${checked(r.libraries.mode !== 'only')}> Bibliotheken, die später dazukommen, automatisch anzeigen</label>
+      <p class="hint">Häkchen = wird angezeigt (wie im Emby-Editor). Platzhalter und Live TV werden pro Benutzer aufgelöst.</p>`
     }
     if (r.kind === 'aperture') {
       return `<div class="row-fields">
@@ -718,14 +725,14 @@ async function pageTemplateEdit(view, templateId) {
     const order = [...c.libraryOrder.filter((g) => libChoices.some(([v]) => v === g)), ...libChoices.map(([v]) => v).filter((v) => !c.libraryOrder.includes(v))]
     c.libraryOrder = order
     return `<p class="muted">Reihenfolge der Bibliotheken in „Meine Medien“ und im Menü. Platzhalter werden pro Benutzer durch seine Aperture-Bibliotheken ersetzt.</p>
-      <table><thead><tr><th>#</th><th>Bibliothek</th><th>In „Meine Medien“ ausblenden<br>${checkTools('config.myMediaHidden')}</th><th>In „Neu hinzugefügt“ ausblenden<br>${checkTools('config.latestHidden')}</th><th>Startansicht</th><th></th></tr></thead><tbody>
+      <table><thead><tr><th>#</th><th>Bibliothek</th><th>In „Meine Medien“ ausblenden<br>${checkTools('config.myMediaHidden', ['alle ausblenden', 'keine ausblenden'])}</th><th>In „Neu hinzugefügt“ ausblenden<br>${checkTools('config.latestHidden', ['alle ausblenden', 'keine ausblenden'])}</th><th>Startansicht</th><th></th></tr></thead><tbody>
       ${order.map((v, i) => {
         const lib = libs.find((l) => l.guid === v)
-        const landing = LANDING[lib?.collectionType] || (v === '@aperture:series' ? LANDING.tvshows : v === '@aperture:movies' ? LANDING.movies : [['', 'Standard'], ['folders', 'Ordner']])
+        const landing = LANDING[lib?.collectionType] || (v === '@aperture:series' ? LANDING.tvshows : v === '@aperture:movies' ? LANDING.movies : v === '@type:livetv' ? LANDING.livetv : null)
         return `<tr><td>${i + 1}</td><td>${esc(libName(v))}</td>
           <td><input type="checkbox" data-bind="config.myMediaHidden" data-list-value="${esc(v)}"${checked(c.myMediaHidden.includes(v))}></td>
           <td><input type="checkbox" data-bind="config.latestHidden" data-list-value="${esc(v)}"${checked(c.latestHidden.includes(v))}></td>
-          <td><select data-bind="config.landing.${esc(v)}">${options(landing, c.landing[v] || '')}</select></td>
+          <td>${landing ? `<select data-bind="config.landing.${esc(v)}">${options(landing, c.landing[v] || '')}</select>` : '<span class="muted">–</span>'}</td>
           <td class="nowrap"><button class="icon" data-action="libUp" data-i="${i}">↑</button><button class="icon" data-action="libDown" data-i="${i}">↓</button></td></tr>`
       }).join('')}</tbody></table>
       <div class="row-fields" style="margin-top:14px">
@@ -806,6 +813,18 @@ async function pageTemplateEdit(view, templateId) {
   }
 
   render()
+  // Row library filter: the boxes mean "shown". Stored as 'all', as 'except' (hidden ones; later libraries
+  // appear by themselves) or, with "automatisch anzeigen" off, as 'only' (shown ones).
+  view.addEventListener('change', (e) => {
+    const box = e.target.closest('[data-rowlib-value],[data-rowlib-auto]')
+    if (!box) return
+    const i = box.dataset.rowlibAuto ?? box.closest('[data-rowlib]').dataset.rowlib
+    const boxes = $$('[data-rowlib-value]', view.querySelector(`[data-rowlib="${i}"]`))
+    const shown = boxes.filter((c) => c.checked).map((c) => c.dataset.rowlibValue)
+    const hidden = boxes.filter((c) => !c.checked).map((c) => c.dataset.rowlibValue)
+    const auto = view.querySelector(`[data-rowlib-auto="${i}"]`).checked
+    draft.config.rows[i].libraries = auto ? (hidden.length ? { mode: 'except', guids: hidden } : { mode: 'all', guids: [] }) : { mode: 'only', guids: shown }
+  })
   bindInputs(view, draft, (el) => {
     if (el.dataset.pool !== undefined) {
       const c = collections.find((x) => x.id === el.value)

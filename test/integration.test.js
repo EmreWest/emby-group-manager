@@ -140,7 +140,7 @@ test('templates: apply to a user with only legacy defaults, order and aperture p
   assert.deepEqual(emreRows.map((s) => s.SectionType), ['userviews', 'resume', 'items', 'boxset', 'boxset', 'boxset', 'latestmediablock'], 'empty collection row dropped, legacy defaults gone')
   const ap = emreRows[2]
   assert.equal(ap.CustomName, 'Für dich ausgewählt Emre Filme')
-  assert.deepEqual(ap.ExcludedFolders.sort(), st.users.find((u) => u.Name === 'Emre').Policy.EnabledFolders.filter((g) => g !== st.apEmre.Guid).map((g) => st.folders.find((f) => f.Guid === g).ItemId).sort())
+  assert.deepEqual(ap.ExcludedFolders.sort(), st.users.find((u) => u.Name === 'Emre').Policy.EnabledFolders.filter((g) => g !== st.apEmre.Guid).map((g) => st.folders.find((f) => f.Guid === g).ItemId).concat('livetv1').sort(), 'everything but the own Aperture library, Live TV included')
   assert.equal(emreRows[3].ParentId, 'c5', 'seasonal row shown')
   assert.equal(emreRows[4].SortBy, 'Random')
   assert.ok(emreRows[6].ExcludedFolders.includes(st.apEmre.ItemId))
@@ -172,6 +172,30 @@ test('hiding libraries in "Neu hinzugefügt" does not empty Weiterschauen; user 
   const detail = await call('GET', `/api/users/${st.emre.Id}`)
   assert.equal(detail.homescreen.rows.find((r) => r.type === 'resume').items, 2)
   assert.equal(detail.homescreen.rows.find((r) => r.type === 'latestmediablock').items, null)
+
+  // Live TV is a view, not a library: it can be hidden per row and gets the fixed landing key
+  t.config.latestHidden = []
+  t.config.rows.find((r) => r.kind === 'section' && r.sectionType === 'userviews').libraries = { mode: 'except', guids: ['@type:livetv'] }
+  t.config.landing = { '@type:livetv': 'guide' }
+  await call('PUT', `/api/templates/${templateId}`, t)
+  await call('POST', `/api/layout-groups/${layoutId}/apply`, {})
+  const after = st.homeSections.get(st.emre.Id)
+  assert.deepEqual(after.find((s) => s.SectionType === 'userviews').ExcludedFolders, [st.apEmreTv.ItemId, 'livetv1'].sort(), 'Live TV from the row filter, Aperture series from „Meine Medien ausblenden“')
+  assert.deepEqual(after.find((s) => s.SectionType === 'latestmediablock').ExcludedFolders.filter((x) => x !== st.apEmre.ItemId), [])
+  assert.equal(st.userSettings.get(st.emre.Id)['landing-livetv'], 'guide')
+})
+
+test('row library filter "only": shown libraries stay, everything else (incl. Live TV) is excluded', async () => {
+  const st = mock.state
+  const t = await call('GET', `/api/templates/${templateId}`)
+  t.config.rows.find((r) => r.kind === 'section' && r.sectionType === 'userviews').libraries = { mode: 'only', guids: [st.movies.Guid, st.series.Guid, '@aperture:movies'] }
+  await call('PUT', `/api/templates/${templateId}`, t)
+  await call('POST', `/api/layout-groups/${layoutId}/apply`, {})
+  const ex = st.homeSections.get(st.emre.Id).find((s) => s.SectionType === 'userviews').ExcludedFolders
+  assert.ok(ex.includes('livetv1') && ex.includes(st.apEmreTv.ItemId))
+  assert.ok(!ex.includes(st.movies.ItemId) && !ex.includes(st.series.ItemId) && !ex.includes(st.apEmre.ItemId))
+  t.config.rows.find((r) => r.kind === 'section' && r.sectionType === 'userviews').libraries = { mode: 'all', guids: [] }
+  await call('PUT', `/api/templates/${templateId}`, t)
 })
 
 test('preview for tomorrow / next week and reroll', async () => {

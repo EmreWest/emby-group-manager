@@ -69,7 +69,8 @@ export const emby = {
     return items(await request('GET', '/Library/VirtualFolders'))
   },
   async userViews(userId) {
-    return items(await request('GET', `/Users/${userId}/Views`, { query: { IncludeHidden: true } }))
+    // Same parameters as Emby's own section editor, so ExcludedFolders ids match what it shows.
+    return items(await request('GET', `/Users/${userId}/Views`, { query: { IncludeHidden: true, AllowDynamicChildren: false } }))
   },
   async parentalRatings() {
     return items(await request('GET', '/Localization/ParentalRatings'))
