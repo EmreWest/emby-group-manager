@@ -147,9 +147,9 @@ test('templates: apply to a user with only legacy defaults, order and aperture p
   const cfg = st.users.find((u) => u.Name === 'Emre').Configuration
   assert.equal(cfg.OrderedViews[0], st.apEmre.Guid)
   assert.deepEqual(cfg.MyMediaExcludes, [], 'invisible Emby list is cleared')
-  assert.ok(emreRows[0].ExcludedFolders.includes(st.apEmreTv.ItemId), 'old template-wide "hide in Meine Medien" folded into the row')
+  assert.deepEqual(emreRows[0].ExcludedFolders, [], 'old template-wide "hide in Meine Medien" list is dropped, the row shows everything')
   const saved = await call('GET', `/api/templates/${t.id}`)
-  assert.deepEqual(saved.config.rows[0].libraries, { mode: 'except', guids: ['@aperture:series'] })
+  assert.deepEqual(saved.config.rows[0].libraries, { mode: 'all', guids: [] })
   assert.equal(saved.config.myMediaHidden, undefined)
   assert.equal(cfg.AudioLanguagePreference, 'ger', 'other configuration untouched')
   assert.equal(st.userSettings.get(st.emre.Id)[`landing-${st.movies.Guid}`], 'suggestions')
@@ -167,7 +167,7 @@ test('templates: apply to a user with only legacy defaults, order and aperture p
 test('hiding libraries in "Neu hinzugefügt" does not empty Weiterschauen; user page shows item counts', async () => {
   const st = mock.state
   const t = await call('GET', `/api/templates/${templateId}`)
-  t.config.latestHidden = [st.movies.Guid, st.series.Guid, st.kids.Guid, '@aperture:movies', '@aperture:series']
+  t.config.rows.find((r) => r.sectionType === 'latestmediablock').libraries = { mode: 'except', guids: [st.movies.Guid, st.series.Guid, st.kids.Guid, '@aperture:movies', '@aperture:series'] }
   await call('PUT', `/api/templates/${templateId}`, t)
   await call('POST', `/api/layout-groups/${layoutId}/apply`, { force: true })
   const rows = st.homeSections.get(st.emre.Id)
@@ -209,6 +209,9 @@ test('preview for tomorrow / next week and reroll', async () => {
     const p = await call('POST', `/api/templates/${templateId}/preview`, { when, userId: st.emre.Id })
     assert.equal(p.rows.filter((r) => r.kind === 'rotation' && r.shown).length, 2, when)
   }
+  const forEmre = await call('POST', `/api/templates/${templateId}/preview`, { when: 'today', userId: st.emre.Id })
+  const mmRow = forEmre.rows.find((r) => r.label === 'Meine Medien')
+  assert.equal(mmRow.libraries.length, mmRow.librariesTotal, 'preview says which libraries Meine Medien shows')
   const generic = await call('POST', `/api/templates/${templateId}/preview`, { when: 'today' })
   assert.ok(generic.rows.find((r) => r.kind === 'aperture').placeholder)
 
@@ -243,7 +246,9 @@ test('hidden MyMediaExcludes: warned, taken into the row on import (stale ids dr
   assert.ok(users.find((u) => u.name === 'Lina').warnings.some((w) => w.includes('MyMediaExcludes') && w.includes('Filme')))
   const imported = await call('POST', '/api/templates/from-user', { userId: lina.Id, name: 'Lina mit Ausblendung' })
   const mm = imported.config.rows.find((r) => r.sectionType === 'userviews')
-  assert.ok(mm.libraries.guids.includes(st.movies.Guid))
+  assert.equal(mm.libraries.mode, 'all', 'MyMediaExcludes is not taken over')
+  const detail = await call('GET', `/api/users/${lina.Id}`)
+  assert.deepEqual(detail.hiddenInMyMedia, ['Filme'])
   assert.ok(!JSON.stringify(imported.config).includes('deadbeef'), 'stale id dropped')
   await call('POST', `/api/layout-groups/${layoutId}/apply`, { force: true, userIds: [lina.Id] })
   assert.deepEqual(lina.Configuration.MyMediaExcludes, [])

@@ -20,6 +20,7 @@ import { inSeason } from './seasons.js'
 const norm = (s) => String(s || '').toLowerCase().replace(/-/g, '')
 const uniq = (a) => [...new Set(a)]
 const viewKey = (v) => v.Guid || v.Id
+const LIBRARY_ROWS = ['userviews', 'resume', 'resumeaudio', 'latestmediablock', 'latestmoviereleases', 'latestepisodereleases', 'items', 'collections', 'playlists']
 const EDITABLE = ['SectionType', 'CustomName', 'Subtitle', 'ViewType', 'ImageType', 'DisplayMode', 'ScrollDirection', 'ParentId', 'SortBy', 'SortOrder', 'ItemTypes', 'IncludeNextUpInResume', 'ExcludedFolders', 'Query', 'CardSizeOffset', 'RefreshInterval']
 const LEGACY_IDS = new Set(['smalllibrarytiles', 'librarybuttons', 'librarytiles', 'resume', 'resumeaudio', 'livetv', 'onnow', 'latestmedia', 'latestmediablock', 'nextup', 'none', 'activerecordings', 'latestmoviereleases', 'latestepisodereleases', 'collections', 'playlists'])
 const CONFIG_KEYS = ['OrderedViews', 'MyMediaExcludes', 'LatestItemsExcludes', 'HidePlayedInLatest']
@@ -196,6 +197,15 @@ export async function resolveTemplate(template, { state, user = null, views = nu
     if (cfg.tvHome) userSettings.tvhome = cfg.tvHome
   }
 
+  // For the preview: which of the user's libraries each library-based row will actually show.
+  if (views) {
+    for (const r of rows) {
+      if (!r.section || !LIBRARY_ROWS.includes(r.section.SectionType)) continue
+      const ex = new Set(r.section.ExcludedFolders.map(norm))
+      r.libraries = views.filter((v) => !ex.has(norm(v.Id))).map((v) => v.Name)
+      r.librariesTotal = views.length
+    }
+  }
   return { rows, sections: rows.filter((r) => r.section).map((r) => r.section), configuration, userSettings }
 }
 
@@ -363,9 +373,8 @@ export async function templateFromUser(state, userId) {
   return normalizeConfig({
     rows,
     libraryOrder: tokens(c.OrderedViews),
-    // Emby applies MyMediaExcludes to "Meine Medien" on top of the row, so it belongs to that row's filter
-    // (normalizeConfig folds it in). LatestItemsExcludes has no effect on stored rows and is not taken over.
-    myMediaHidden: tokens(c.MyMediaExcludes),
+    // MyMediaExcludes / LatestItemsExcludes are not taken over: Emby 4.10 no longer shows them, they are usually
+    // leftovers, and applying a template clears them.
     hidePlayedInLatest: !!c.HidePlayedInLatest,
     landing,
     tvHome: settings?.tvhome || '',

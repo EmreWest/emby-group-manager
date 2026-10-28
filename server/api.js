@@ -114,12 +114,18 @@ api.get('/api/users/:id', async ({ params }) => {
   const counts = Array.isArray(sections)
     ? await Promise.all(sections.map((s) => (s.SectionType === 'latestmediablock' ? null : emby.sectionItemCount(params.id, s.Id).catch(() => null))))
     : []
+  const views = await emby.userViews(params.id).catch(() => [])
+  // Names of the libraries a row leaves out, matched like Emby's section editor does (Id or Guid).
+  const excludedNames = (s) => views.filter((v) => (s.ExcludedFolders || []).some((x) => String(x).toLowerCase() === String(v.Id).toLowerCase() || String(x).toLowerCase() === String(v.Guid).toLowerCase())).map((v) => v.Name)
+  const hiddenEverywhere = views.filter((v) => (user.Configuration?.MyMediaExcludes || []).includes(v.Guid || v.Id)).map((v) => v.Name)
   return {
+    hiddenInMyMedia: hiddenEverywhere,
+    viewCount: views.length,
     id: user.Id,
     name: user.Name,
     policy: preview[0],
     effective: effectiveRights(state, user),
-    homescreen: Array.isArray(sections) ? { legacy: isLegacy(sections), rows: sections.map((s, i) => ({ id: s.Id, label: sectionLabel(s), type: s.SectionType, sortBy: s.SortBy, items: counts[i], excluded: (s.ExcludedFolders || []).length })) } : sections,
+    homescreen: Array.isArray(sections) ? { legacy: isLegacy(sections), rows: sections.map((s, i) => ({ id: s.Id, label: sectionLabel(s), type: s.SectionType, sortBy: s.SortBy, items: counts[i], excluded: excludedNames(s) })) } : sections,
     layoutState: layoutState(params.id),
     backups: listBackups(params.id),
   }

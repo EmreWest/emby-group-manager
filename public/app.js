@@ -398,7 +398,9 @@ async function pageUserDetail(view, userId) {
       <div class="card"><h2>Aktueller Homescreen</h2>
         ${u.homescreen.error ? `<div class="alert danger">${esc(u.homescreen.error)}</div>` : `
           ${u.homescreen.legacy ? '<div class="alert info">Keine gespeicherten Zeilen – Emby zeigt seine Standardwerte.</div>' : ''}
-          <ol>${u.homescreen.rows.map((r) => `<li>${esc(r.label)} <span class="muted small">${esc(r.type)}${r.sortBy ? ' · ' + esc(r.sortBy) : ''}${r.excluded ? ` · ${r.excluded} Bibliothek(en) ausgeschlossen` : ''}</span>
+          ${u.hiddenInMyMedia.length ? `<div class="alert warn">Zusätzlich in „Meine Medien“ und im Menü versteckt (Emby-Einstellung MyMediaExcludes): ${esc(u.hiddenInMyMedia.join(', '))}. Wird beim nächsten Anwenden einer Vorlage geleert.</div>` : ''}
+          <ol>${u.homescreen.rows.map((r) => `<li>${esc(r.label)} <span class="muted small">${esc(r.type)}${r.sortBy ? ' · ' + esc(r.sortBy) : ''}</span>
+            ${r.excluded.length ? `<div class="small muted">ohne: ${esc(r.excluded.join(', '))}</div>` : ''}
             ${r.items == null ? '' : r.items ? badge(`${r.items} Einträge`, 'ok') : badge('leer – Emby blendet die Zeile aus', 'warn')}</li>`).join('')}</ol>
           <p class="hint">Einträge = was Emby diesem Benutzer in der Zeile gerade liefert. „Weiterschauen“ ist leer, solange nichts angefangen ist.</p>
           ${u.layoutState ? `<p class="small muted">Zuletzt von diesem Tool geschrieben: ${fmtDate(u.layoutState.applied_at)}</p>` : ''}`}
@@ -818,7 +820,7 @@ async function pageTemplateEdit(view, templateId) {
     if (isNew) return ($('#preview').innerHTML = '<p class="muted">Erst speichern.</p>')
     const r = await POST(`/api/templates/${templateId}/preview`, { config: draft.config, when: $('#pv-when').value, userId: $('#pv-user').value || null })
     $('#preview').innerHTML = `<p class="small muted">Stand: ${fmtDate(r.date)}${r.user ? ` · für ${esc(r.user.name)}` : ''}</p>
-      <ul class="preview-list">${r.rows.map((x) => `<li class="${x.shown ? '' : 'hidden'}"><span>${esc(x.label)} ${x.source === 'seasonal' ? badge('Saison', 'warn') : x.kind === 'rotation' ? badge('Rotation', 'kids') : ''}${x.predicted ? badge('voraussichtlich') : ''}${x.placeholder ? badge('Platzhalter', 'info') : ''}</span><span class="small muted">${esc(x.note || '')}</span></li>`).join('')}</ul>`
+      <ul class="preview-list">${r.rows.map((x) => `<li class="${x.shown ? '' : 'hidden'}"><span>${esc(x.label)} ${x.source === 'seasonal' ? badge('Saison', 'warn') : x.kind === 'rotation' ? badge('Rotation', 'kids') : ''}${x.predicted ? badge('voraussichtlich') : ''}${x.placeholder ? badge('Platzhalter', 'info') : ''}${x.libraries ? `<div class="small muted">zeigt ${x.libraries.length === x.librariesTotal ? 'alle Bibliotheken' : x.libraries.length ? esc(x.libraries.join(', ')) : 'keine Bibliothek'}</div>` : ''}</span><span class="small muted">${esc(x.note || '')}</span></li>`).join('')}</ul>`
   }
 
   render()
