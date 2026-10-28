@@ -1,0 +1,28 @@
+services:
+  emby-group-manager:
+    image: ghcr.io/emrewest/emby-group-manager:latest
+    # build: .            # stattdessen lokal bauen
+    container_name: emby-group-manager
+    restart: unless-stopped
+    ports:
+      - "8099:8080"
+    volumes:
+      - ./data:/data        # SQLite-Datenbank (Gruppen, Vorlagen, Backups, Protokoll)
+    environment:
+      TZ: Europe/Berlin
+      # Emby: Dashboard > Erweitert > API-Schlüssel
+      EMBY_URL: http://emby:8096
+      EMBY_API_KEY: ""
+      # Aperture (empfohlen): Einstellungen > System > API Keys, Admin-Schlüssel "apt_…"
+      APERTURE_URL: http://aperture:3456
+      APERTURE_API_KEY: ""
+      # Alternativ/zusätzlich nur lesender DB-Zugriff (wird nur genutzt, wenn die API nicht antwortet)
+      # APERTURE_DB_URL: postgres://aperture_ro:passwort@aperture-db:5432/aperture
+      SYNC_INTERVAL_MINUTES: "60"
+      # Lokaler Notfall-Login zusätzlich zu Emby-Admin-Konten (optional)
+      ADMIN_PASSWORD: ""
+      # DRY_RUN: "true"     # Startwert; später in der Oberfläche umschaltbar
+    # Wenn Emby/Aperture im selben Compose-Netz laufen, reicht der Dienstname als Host.
+    # Sonst die IP des Docker-Hosts verwenden oder:
+    # extra_hosts:
+    #   - "host.docker.internal:host-gateway"
