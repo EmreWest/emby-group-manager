@@ -642,6 +642,16 @@ async function pageTemplateEdit(view, templateId) {
   const libs = libraries.filter((l) => !l.aperture)
   const libChoices = [...APERTURE_TOKENS, ...libs.map((l) => [l.guid, l.name]), ...SPECIAL_VIEWS]
   const libName = (token) => libChoices.find(([v]) => v === token)?.[1] || token
+  // ids of libraries that no longer exist (e.g. taken over from Emby's lists) are dropped; saving keeps it clean
+  const known = new Set(libChoices.map(([v]) => v))
+  for (const r of draft.config.rows) if (r.libraries) r.libraries.guids = r.libraries.guids.filter((g) => known.has(g))
+  const filterSummary = (lib) => {
+    if (lib.mode === 'all') return ''
+    const shown = libChoices.filter(([v]) => libShown(lib, v)).map(([, l]) => l)
+    const hidden = libChoices.filter(([v]) => !libShown(lib, v)).map(([, l]) => l)
+    if (!shown.length) return ' · zeigt keine Bibliothek'
+    return shown.length <= hidden.length ? ` · nur ${shown.join(', ')}` : ` · ohne ${hidden.join(', ')}`
+  }
   const collections = cols.collections
   let openRow = null
   let tab = 'rows'
@@ -657,7 +667,7 @@ async function pageTemplateEdit(view, templateId) {
   const randomBoxsetHint = (row) => (row.sortBy === 'Random' ? '<div class="alert info small">Die Emby-Oberfläche bietet „Zufällig“ für Kollektionszeilen nicht an, der Server speichert SortBy aber frei. Ob die Zeile wirklich mischt, an einem Testbenutzer prüfen (Diagnose → Snapshot, dann Startseite zweimal laden).</div>' : '')
 
   function rowSummary(r) {
-    if (r.kind === 'section') return `${meta.sectionTypes[r.sectionType] || r.sectionType}${r.customName ? ` „${r.customName}“` : ''}${r.libraries.mode !== 'all' ? ` · ${r.libraries.mode === 'only' ? 'nur' : 'ohne'} ${r.libraries.guids.map(libName).join(', ')}` : ''}`
+    if (r.kind === 'section') return `${meta.sectionTypes[r.sectionType] || r.sectionType}${r.customName ? ` „${r.customName}“` : ''}${filterSummary(r.libraries)}`
     if (r.kind === 'aperture') return `Eigene Aperture-${r.mediaType === 'series' ? 'Serien' : 'Filme'}${r.apertureStyle === 'latest' ? ' (Neu hinzugefügt)' : ''}`
     if (r.kind === 'collection') return `Kollektion: ${r.customName || r.collectionName || '(keine gewählt)'}`
     if (r.kind === 'seasonal') return `Saisonal: ${r.collectionName || '(kein Name)'}${r.season?.from ? ` · ${r.season.from} bis ${r.season.to}` : ''}`
@@ -724,14 +734,13 @@ async function pageTemplateEdit(view, templateId) {
     const c = draft.config
     const order = [...c.libraryOrder.filter((g) => libChoices.some(([v]) => v === g)), ...libChoices.map(([v]) => v).filter((v) => !c.libraryOrder.includes(v))]
     c.libraryOrder = order
-    return `<p class="muted">Reihenfolge der Bibliotheken in „Meine Medien“ und im Menü. Platzhalter werden pro Benutzer durch seine Aperture-Bibliotheken ersetzt.</p>
-      <table><thead><tr><th>#</th><th>Bibliothek</th><th>In „Meine Medien“ ausblenden<br>${checkTools('config.myMediaHidden', ['alle ausblenden', 'keine ausblenden'])}</th><th>In „Neu hinzugefügt“ ausblenden<br>${checkTools('config.latestHidden', ['alle ausblenden', 'keine ausblenden'])}</th><th>Startansicht</th><th></th></tr></thead><tbody>
+    return `<p class="muted">Reihenfolge der Bibliotheken in „Meine Medien“ und im Menü. Platzhalter werden pro Benutzer durch seine Aperture-Bibliotheken ersetzt.
+      Welche Bibliotheken eine Zeile zeigt, stellst du direkt in der Zeile ein (Tab „Zeilen“, ✎).</p>
+      <table><thead><tr><th>#</th><th>Bibliothek</th><th>Startansicht</th><th></th></tr></thead><tbody>
       ${order.map((v, i) => {
         const lib = libs.find((l) => l.guid === v)
         const landing = LANDING[lib?.collectionType] || (v === '@aperture:series' ? LANDING.tvshows : v === '@aperture:movies' ? LANDING.movies : v === '@type:livetv' ? LANDING.livetv : null)
         return `<tr><td>${i + 1}</td><td>${esc(libName(v))}</td>
-          <td><input type="checkbox" data-bind="config.myMediaHidden" data-list-value="${esc(v)}"${checked(c.myMediaHidden.includes(v))}></td>
-          <td><input type="checkbox" data-bind="config.latestHidden" data-list-value="${esc(v)}"${checked(c.latestHidden.includes(v))}></td>
           <td>${landing ? `<select data-bind="config.landing.${esc(v)}">${options(landing, c.landing[v] || '')}</select>` : '<span class="muted">–</span>'}</td>
           <td class="nowrap"><button class="icon" data-action="libUp" data-i="${i}">↑</button><button class="icon" data-action="libDown" data-i="${i}">↓</button></td></tr>`
       }).join('')}</tbody></table>

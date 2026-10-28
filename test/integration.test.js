@@ -146,7 +146,11 @@ test('templates: apply to a user with only legacy defaults, order and aperture p
   assert.ok(emreRows[6].ExcludedFolders.includes(st.apEmre.ItemId))
   const cfg = st.users.find((u) => u.Name === 'Emre').Configuration
   assert.equal(cfg.OrderedViews[0], st.apEmre.Guid)
-  assert.deepEqual(cfg.MyMediaExcludes, [st.apEmreTv.Guid])
+  assert.deepEqual(cfg.MyMediaExcludes, [], 'invisible Emby list is cleared')
+  assert.ok(emreRows[0].ExcludedFolders.includes(st.apEmreTv.ItemId), 'old template-wide "hide in Meine Medien" folded into the row')
+  const saved = await call('GET', `/api/templates/${t.id}`)
+  assert.deepEqual(saved.config.rows[0].libraries, { mode: 'except', guids: ['@aperture:series'] })
+  assert.equal(saved.config.myMediaHidden, undefined)
   assert.equal(cfg.AudioLanguagePreference, 'ger', 'other configuration untouched')
   assert.equal(st.userSettings.get(st.emre.Id)[`landing-${st.movies.Guid}`], 'suggestions')
 
@@ -174,13 +178,14 @@ test('hiding libraries in "Neu hinzugefügt" does not empty Weiterschauen; user 
   assert.equal(detail.homescreen.rows.find((r) => r.type === 'latestmediablock').items, null)
 
   // Live TV is a view, not a library: it can be hidden per row and gets the fixed landing key
-  t.config.latestHidden = []
-  t.config.rows.find((r) => r.kind === 'section' && r.sectionType === 'userviews').libraries = { mode: 'except', guids: ['@type:livetv'] }
-  t.config.landing = { '@type:livetv': 'guide' }
-  await call('PUT', `/api/templates/${templateId}`, t)
+  const t2 = await call('GET', `/api/templates/${templateId}`)
+  t2.config.rows.find((r) => r.sectionType === 'latestmediablock').libraries = { mode: 'except', guids: ['@aperture:movies'] }
+  t2.config.rows.find((r) => r.kind === 'section' && r.sectionType === 'userviews').libraries = { mode: 'except', guids: ['@type:livetv'] }
+  t2.config.landing = { '@type:livetv': 'guide' }
+  await call('PUT', `/api/templates/${templateId}`, t2)
   await call('POST', `/api/layout-groups/${layoutId}/apply`, {})
   const after = st.homeSections.get(st.emre.Id)
-  assert.deepEqual(after.find((s) => s.SectionType === 'userviews').ExcludedFolders, [st.apEmreTv.ItemId, 'livetv1'].sort(), 'Live TV from the row filter, Aperture series from „Meine Medien ausblenden“')
+  assert.deepEqual(after.find((s) => s.SectionType === 'userviews').ExcludedFolders, ['livetv1'])
   assert.deepEqual(after.find((s) => s.SectionType === 'latestmediablock').ExcludedFolders.filter((x) => x !== st.apEmre.ItemId), [])
   assert.equal(st.userSettings.get(st.emre.Id)['landing-livetv'], 'guide')
 })
@@ -228,6 +233,20 @@ test('backups: original kept, restore brings back the legacy rows', async () => 
   assert.ok(original.legacy)
   await call('POST', `/api/backups/${original.id}/restore`)
   assert.deepEqual(st.homeSections.get(st.emre.Id).map((s) => s.SectionType), ['userviews', 'resume', 'resumeaudio', 'onnow', 'latestmediablock'])
+})
+
+test('hidden MyMediaExcludes: warned, taken into the row on import (stale ids dropped), cleared on apply', async () => {
+  const st = mock.state
+  const lina = st.users.find((u) => u.Name === 'Lina')
+  lina.Configuration.MyMediaExcludes = [st.movies.Guid, 'deadbeefdeadbeefdeadbeefdeadbeef']
+  const users = await call('GET', '/api/users')
+  assert.ok(users.find((u) => u.name === 'Lina').warnings.some((w) => w.includes('MyMediaExcludes') && w.includes('Filme')))
+  const imported = await call('POST', '/api/templates/from-user', { userId: lina.Id, name: 'Lina mit Ausblendung' })
+  const mm = imported.config.rows.find((r) => r.sectionType === 'userviews')
+  assert.ok(mm.libraries.guids.includes(st.movies.Guid))
+  assert.ok(!JSON.stringify(imported.config).includes('deadbeef'), 'stale id dropped')
+  await call('POST', `/api/layout-groups/${layoutId}/apply`, { force: true, userIds: [lina.Id] })
+  assert.deepEqual(lina.Configuration.MyMediaExcludes, [])
 })
 
 test('template from user round trip', async () => {

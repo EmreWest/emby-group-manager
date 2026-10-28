@@ -77,7 +77,8 @@ api.get('/api/meta', async () => ({
 // ---- users ----
 
 api.get('/api/users', async () => {
-  const state = await loadState()
+  // always fresh: this page is where changes made in Emby itself should show up right away
+  const state = await loadState({ force: true })
   const lgs = groups.listLibraryGroups()
   const ygs = groups.listLayoutGroups()
   const tpls = templates.listTemplates()

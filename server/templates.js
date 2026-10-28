@@ -76,13 +76,26 @@ function normalizeRow(r = {}) {
   return row
 }
 
+// Older templates kept "hidden in Meine Medien / Neu hinzugefügt" as template-wide lists that were silently added
+// to those rows. The row filter is now the only place: fold the lists into the rows they used to affect.
+const LATEST_TYPES = ['latestmediablock', 'latestmoviereleases', 'latestepisodereleases']
+function foldHidden(rows, sectionTypes, tokens) {
+  if (!tokens.length) return
+  for (const r of rows) {
+    if (r.kind !== 'section' || !sectionTypes.includes(r.sectionType)) continue
+    if (r.libraries.mode === 'only') r.libraries.guids = r.libraries.guids.filter((g) => !tokens.includes(g))
+    else r.libraries = { mode: 'except', guids: [...new Set([...(r.libraries.mode === 'except' ? r.libraries.guids : []), ...tokens])] }
+  }
+}
+
 export function normalizeConfig(c = {}) {
   const rot = c.rotation || {}
+  const rows = (Array.isArray(c.rows) ? c.rows : []).map(normalizeRow)
+  foldHidden(rows, ['userviews'], list(c.myMediaHidden))
+  foldHidden(rows, LATEST_TYPES, list(c.latestHidden))
   return {
-    rows: (Array.isArray(c.rows) ? c.rows : []).map(normalizeRow),
+    rows,
     libraryOrder: list(c.libraryOrder),
-    myMediaHidden: list(c.myMediaHidden),
-    latestHidden: list(c.latestHidden),
     hidePlayedInLatest: !!c.hidePlayedInLatest,
     landing: Object.fromEntries(Object.entries(c.landing || {}).map(([k, v]) => [k, str(v)]).filter(([k]) => k)),
     tvHome: ['vertical', 'horizontal'].includes(c.tvHome) ? c.tvHome : '',

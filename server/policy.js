@@ -117,6 +117,10 @@ export function userWarnings(state, user, rights) {
   const sees = p.EnableAllFolders ? foreign : foreign.filter((l) => enabled.has(norm(l.guid)))
   if (sees.length) warnings.push(`Sieht fremde Aperture-Bibliotheken: ${sees.map((l) => l.name).join(', ')}${rights.managed ? ' (wird beim Anwenden entfernt)' : ''}`)
   if (!rights.managed && p.EnableAllFolders) warnings.push('Nicht verwaltet: hat Zugriff auf alle Bibliotheken')
+  // Emby applies MyMediaExcludes to "Meine Medien" and the library menu, and the 4.10 settings page no longer shows it
+  const names = new Map(state.libraries.map((l) => [norm(l.guid), l.name]))
+  const hiddenInMyMedia = (user.Configuration?.MyMediaExcludes || []).map((g) => names.get(norm(g))).filter(Boolean)
+  if (hiddenInMyMedia.length) warnings.push(`In „Meine Medien“ und im Menü versteckt (Emby-Einstellung MyMediaExcludes): ${hiddenInMyMedia.join(', ')} – wird beim Anwenden einer Vorlage geleert`)
   return warnings
 }
 

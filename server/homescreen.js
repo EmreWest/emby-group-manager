@@ -2,7 +2,7 @@
 //
 // Where Emby 4.10 keeps a home screen (verified, see docs/EMBY-API.md):
 //   rows             /Users/{id}/HomeSections (server side, per user, the same on every device)
-//   library order    user Configuration.OrderedViews; MyMediaExcludes, LatestItemsExcludes, HidePlayedInLatest
+//   library order    user Configuration.OrderedViews (MyMediaExcludes / LatestItemsExcludes are cleared, see below)
 //   landing screens  /UserSettings/{id} keys "landing-<library guid>", TV layout key "tvhome"
 // A user who never saved a home screen has no stored rows; Emby then shows its legacy defaults, and its REST layer
 // stores those defaults before the first change (EnsureSavedSections). That is why writing adds our rows first and
@@ -20,10 +20,6 @@ import { inSeason } from './seasons.js'
 const norm = (s) => String(s || '').toLowerCase().replace(/-/g, '')
 const uniq = (a) => [...new Set(a)]
 const viewKey = (v) => v.Guid || v.Id
-// Rows the template's "hidden in Neu hinzugefügt" list applies to. Emby's legacy defaults also applied
-// LatestItemsExcludes to Weiterschauen, but a resume row with every video library excluded comes back empty
-// (BaseContentService.GetResumeItems), so resume rows are filtered only by their own library setting.
-const LATEST_LIKE = ['latestmediablock', 'latestmoviereleases', 'latestepisodereleases']
 const EDITABLE = ['SectionType', 'CustomName', 'Subtitle', 'ViewType', 'ImageType', 'DisplayMode', 'ScrollDirection', 'ParentId', 'SortBy', 'SortOrder', 'ItemTypes', 'IncludeNextUpInResume', 'ExcludedFolders', 'Query', 'CardSizeOffset', 'RefreshInterval']
 const LEGACY_IDS = new Set(['smalllibrarytiles', 'librarybuttons', 'librarytiles', 'resume', 'resumeaudio', 'livetv', 'onnow', 'latestmedia', 'latestmediablock', 'nextup', 'none', 'activerecordings', 'latestmoviereleases', 'latestepisodereleases', 'collections', 'playlists'])
 const CONFIG_KEYS = ['OrderedViews', 'MyMediaExcludes', 'LatestItemsExcludes', 'HidePlayedInLatest']
@@ -113,8 +109,6 @@ export async function resolveTemplate(template, { state, user = null, views = nu
         } else if (row.libraries.mode === 'except') {
           excluded = viewIds(row.libraries.guids)
         }
-        if (row.sectionType === 'userviews') excluded.push(...viewIds(cfg.myMediaHidden))
-        if (LATEST_LIKE.includes(row.sectionType)) excluded.push(...viewIds(cfg.latestHidden))
         s.ExcludedFolders = uniq(excluded).sort()
       }
       add(row, s, label)
@@ -186,10 +180,13 @@ export async function resolveTemplate(template, { state, user = null, views = nu
     const ordered = []
     for (const token of cfg.libraryOrder) for (const v of matchViews(state, userId, views, [token])) if (!ordered.includes(viewKey(v))) ordered.push(viewKey(v))
     for (const v of views) if (!ordered.includes(viewKey(v))) ordered.push(viewKey(v))
-    // Emby compares MyMediaExcludes / OrderedViews with the folder's IdString (UserViewManager.GetUserViews), which
-    // is what the views list returns as Guid; Id is the fallback, as in Emby's own settings page.
+    // Emby compares OrderedViews with the folder's IdString (UserViewManager.GetUserViews), which is what the views
+    // list returns as Guid; Id is the fallback, as in Emby's own settings page.
     const keysFor = (tokens) => matchViews(state, userId, views, tokens).map(viewKey)
-    configuration = { OrderedViews: ordered, MyMediaExcludes: keysFor(cfg.myMediaHidden), LatestItemsExcludes: keysFor(cfg.latestHidden), HidePlayedInLatest: cfg.hidePlayedInLatest }
+    // Library selection lives in the rows' ExcludedFolders. MyMediaExcludes is cleared because Emby applies it to
+    // every "Meine Medien" row and the library menu on top of that, invisibly (the 4.10 settings page no longer
+    // shows it); LatestItemsExcludes only matters for Emby's legacy default rows.
+    configuration = { OrderedViews: ordered, MyMediaExcludes: [], LatestItemsExcludes: [], HidePlayedInLatest: cfg.hidePlayedInLatest }
     userSettings = {}
     for (const [token, value] of Object.entries(cfg.landing)) {
       // Live TV's landing key is fixed ("landing-livetv"), the others use the library's Guid (settings/homescreen.js)
@@ -339,10 +336,13 @@ export async function templateFromUser(state, userId) {
     if (key === 'livetv') return '@type:livetv'
     const v = views.find((x) => norm(x.Id) === norm(key) || norm(x.Guid) === norm(key))
     if (v && ['livetv', 'boxsets', 'playlists'].includes(String(v.CollectionType).toLowerCase())) return `@type:${String(v.CollectionType).toLowerCase()}`
-    const guid = v ? v.Guid || v.Id : key
+    // ids of libraries that no longer exist (Emby keeps them in these lists) are dropped
+    if (!v) return null
+    const guid = v.Guid || v.Id
     const ap = own.find((l) => norm(l.guid) === norm(guid))
     return ap ? `@aperture:${ap.aperture.mediaType}` : guid
   }
+  const tokens = (keys) => (keys || []).map(tokenFor).filter(Boolean)
   const rows = sections.map((s) => {
     const shown = views.filter((v) => !(s.ExcludedFolders || []).some((x) => norm(x) === norm(v.Id) || norm(x) === norm(v.Guid)))
     const common = { id: newRowId(), customName: s.CustomName || '', subtitle: s.Subtitle || '', viewType: s.ViewType || '', imageType: s.ImageType || '', scrollDirection: s.ScrollDirection || '', displayMode: s.DisplayMode || '', sortBy: s.SortBy || '', sortOrder: s.SortOrder || '', cardSizeOffset: s.CardSizeOffset || 0 }
@@ -351,17 +351,21 @@ export async function templateFromUser(state, userId) {
       const ap = own.find((l) => norm(l.guid) === norm(shown[0].Guid) || norm(l.itemId) === norm(shown[0].Id))
       if (ap) return { ...common, kind: 'aperture', mediaType: ap.aperture.mediaType, apertureStyle: s.SectionType === 'latestmediablock' ? 'latest' : 'items', customName: s.CustomName === ap.name ? '' : common.customName }
     }
-    const excluded = (s.ExcludedFolders || []).map(tokenFor)
+    const excluded = tokens(s.ExcludedFolders)
     return { ...common, kind: 'section', sectionType: s.SectionType, itemTypes: s.ItemTypes || [], includeNextUp: s.IncludeNextUpInResume !== false, libraries: { mode: excluded.length ? 'except' : 'all', guids: excluded }, query: s.Query || {} }
   })
   const c = user.Configuration || {}
   const landing = {}
-  for (const [k, v] of Object.entries(settings || {})) if (k.startsWith('landing-') && v) landing[tokenFor(k.slice(8))] = v
+  for (const [k, v] of Object.entries(settings || {})) {
+    const token = k.startsWith('landing-') && v ? tokenFor(k.slice(8)) : null
+    if (token) landing[token] = v
+  }
   return normalizeConfig({
     rows,
-    libraryOrder: (c.OrderedViews || []).map(tokenFor),
-    myMediaHidden: (c.MyMediaExcludes || []).map(tokenFor),
-    latestHidden: (c.LatestItemsExcludes || []).map(tokenFor),
+    libraryOrder: tokens(c.OrderedViews),
+    // Emby applies MyMediaExcludes to "Meine Medien" on top of the row, so it belongs to that row's filter
+    // (normalizeConfig folds it in). LatestItemsExcludes has no effect on stored rows and is not taken over.
+    myMediaHidden: tokens(c.MyMediaExcludes),
     hidePlayedInLatest: !!c.HidePlayedInLatest,
     landing,
     tvHome: settings?.tvhome || '',
