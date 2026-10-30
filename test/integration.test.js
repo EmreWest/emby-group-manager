@@ -224,6 +224,15 @@ test('collection rows have a library filter too (boxset ExcludedFolders), import
   await call('PUT', `/api/templates/${templateId}`, saved)
 })
 
+test('two applies for the same user at once do not mix their rows', async () => {
+  const st = mock.state
+  const [a, b] = await Promise.all([1, 2].map(() => call('POST', `/api/layout-groups/${layoutId}/apply`, { force: true, userIds: [st.emre.Id] })))
+  for (const r of [a, b]) assert.equal(r.results[0].status, 'applied', JSON.stringify(r.results))
+  const rows = st.homeSections.get(st.emre.Id)
+  const preview = await call('POST', `/api/templates/${templateId}/preview`, { when: 'today', userId: st.emre.Id })
+  assert.equal(rows.length, preview.rows.filter((r) => r.shown).length)
+})
+
 test('preview for tomorrow / next week and reroll', async () => {
   const st = mock.state
   for (const when of ['today', 'tomorrow', 'nextweek']) {

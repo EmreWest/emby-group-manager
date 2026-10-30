@@ -224,6 +224,17 @@ const signature = (s) => [s.SectionType, norm(s.ParentId), s.CustomName || '', s
 export const sameLayout = (current, wanted) => current.length === wanted.length && current.every((s, i) => signature(s) === signature(wanted[i]))
 const sameSection = (stored, sent) => stored.SectionType === sent.SectionType && norm(stored.ParentId) === norm(sent.ParentId) && (stored.CustomName || '') === (sent.CustomName || '')
 
+// One home screen write per user at a time. The scheduler and a manual "Anwenden" (or reroll / restore) adding
+// and deleting rows of the same user concurrently leave a mixed list whose order cannot be set.
+const userLocks = new Map()
+function withUserLock(userId, fn) {
+  const next = (userLocks.get(userId) || Promise.resolve()).then(fn)
+  const tail = next.catch(() => {})
+  userLocks.set(userId, tail)
+  tail.then(() => userLocks.get(userId) === tail && userLocks.delete(userId))
+  return next
+}
+
 /** Replaces a user's rows with `sections` (in order). Add first, delete after, then fix the order if needed. */
 export async function writeSections(userId, sections) {
   if (!sections.length) throw new Error('Leere Startseite: Emby würde wieder seine Standardzeilen zeigen. Mindestens eine Zeile nötig.')
@@ -240,15 +251,16 @@ export async function writeSections(userId, sections) {
     ours.push(mine.Id)
     known = new Set(after.map((s) => s.Id))
   }
-  const others = (await emby.homeSections(userId)).map((s) => s.Id).filter((id) => !ours.includes(id))
-  if (others.length) await emby.deleteHomeSections(userId, others)
-  let current = (await emby.homeSections(userId)).map((s) => s.Id)
-  if (current.join() !== ours.join()) {
+  // Rows someone else added in the meantime (e.g. in Emby's own editor) are removed as well, then the order fixed.
+  for (let attempt = 1; ; attempt++) {
+    const current = (await emby.homeSections(userId)).map((s) => s.Id)
+    if (current.join() === ours.join()) return ours
+    const missing = ours.filter((id) => !current.includes(id)).length
+    if (attempt > 3 || missing) throw new Error(`Reihenfolge der Zeilen konnte nicht gesetzt werden (${ours.length} Zeilen geschrieben, Emby meldet ${current.length}${missing ? `, davon fehlen ${missing}` : ''})`)
+    const others = current.filter((id) => !ours.includes(id))
+    if (others.length) await emby.deleteHomeSections(userId, others)
     for (let i = 0; i < ours.length; i++) await emby.moveHomeSections(userId, [ours[i]], i)
-    current = (await emby.homeSections(userId)).map((s) => s.Id)
-    if (current.join() !== ours.join()) throw new Error('Reihenfolge der Zeilen konnte nicht gesetzt werden')
   }
-  return ours
 }
 
 // ---- backups ----
@@ -280,9 +292,13 @@ export function getBackup(id) {
   return b ? { ...b, data: parseJson(b.data, {}) } : null
 }
 
-export async function restoreBackup(id, { actor, dryRun }) {
+export async function restoreBackup(id, opts) {
   const b = getBackup(id)
   if (!b) throw new Error('Backup nicht gefunden')
+  return withUserLock(b.user_id, () => restoreLocked(b, id, opts))
+}
+
+async function restoreLocked(b, id, { actor, dryRun }) {
   const { sections = [], userSettings = {}, configuration = {} } = b.data
   if (dryRun) {
     logChange({ actor, action: 'homescreen.restore', target: b.user_name, summary: `Backup #${id} vom ${b.created_at}`, dryRun: true })
@@ -311,7 +327,11 @@ export function layoutState(userId) {
  * Applies a template to one user. force=false skips users whose rows already match.
  * @returns {{ status: 'applied'|'unchanged'|'dry-run', rows: string[] }}
  */
-export async function applyTemplateToUser(template, userId, { state, cctx, actor, dryRun, force = false, reason = '', backupKind = 'manuell' }) {
+export function applyTemplateToUser(template, userId, opts) {
+  return withUserLock(userId, () => applyLocked(template, userId, opts))
+}
+
+async function applyLocked(template, userId, { state, cctx, actor, dryRun, force = false, reason = '', backupKind = 'manuell' }) {
   const user = await emby.user(userId)
   const views = await emby.userViews(userId)
   const resolved = await resolveTemplate(template, { state, user, views, cctx })
