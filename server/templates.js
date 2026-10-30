@@ -2,11 +2,12 @@
 //
 // A template is an ordered list of rows plus library-level options (order, hidden in "Meine Medien", hidden in
 // "Neu hinzugefügt" & co., landing screens) and the rotation settings. Row kinds:
-//   section     any Emby section type (resume, latestmediablock, userviews, items, …) with an optional library filter
+//   section     any Emby section type (resume, latestmediablock, userviews, items, …)
 //   aperture    placeholder for the user's own Aperture library (movies or series), resolved per user
 //   collection  a fixed collection (boxset row)
 //   seasonal    a collection looked up by name; shown only while it exists and has items
 //   rotation    one rotation slot, filled from the template's pool (seasonal collections first)
+// All kinds but aperture carry a library filter (Emby's ExcludedFolders; boxset rows honour it too).
 // Library references are library Guids, or '@aperture:movies' / '@aperture:series' for the user's own ones.
 
 import crypto from 'node:crypto'
@@ -29,6 +30,7 @@ export const SECTION_TYPES = {
 }
 
 export const ROW_KINDS = ['section', 'aperture', 'collection', 'seasonal', 'rotation']
+export const LIBRARY_KINDS = ['section', 'collection', 'seasonal', 'rotation']
 const LIB_MODES = ['all', 'only', 'except']
 
 const str = (v) => (v == null ? '' : String(v).trim())
@@ -58,9 +60,9 @@ function normalizeRow(r = {}) {
     row.sectionType = str(r.sectionType) || 'resume'
     row.itemTypes = list(r.itemTypes)
     row.includeNextUp = r.includeNextUp !== false
-    row.libraries = { mode: LIB_MODES.includes(r.libraries?.mode) ? r.libraries.mode : 'all', guids: list(r.libraries?.guids) }
     row.query = r.query && typeof r.query === 'object' ? r.query : {}
   }
+  if (LIBRARY_KINDS.includes(kind)) row.libraries = { mode: LIB_MODES.includes(r.libraries?.mode) ? r.libraries.mode : 'all', guids: list(r.libraries?.guids) }
   if (kind === 'aperture') {
     row.mediaType = r.mediaType === 'series' ? 'series' : 'movies'
     row.apertureStyle = r.apertureStyle === 'latest' ? 'latest' : 'items'

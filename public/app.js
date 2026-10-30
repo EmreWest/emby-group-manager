@@ -666,14 +666,20 @@ async function pageTemplateEdit(view, templateId) {
     <label class="field"><span>Bildtyp</span><select data-bind="config.rows.${i}.imageType">${options(IMAGE_TYPES, row.imageType)}</select></label>
     <label class="field"><span>Scrollrichtung</span><select data-bind="config.rows.${i}.scrollDirection">${options(SCROLL, row.scrollDirection)}</select></label>
     <label class="field"><span>Anzeigen auf</span><select data-bind="config.rows.${i}.displayMode">${options(DISPLAY_MODES, row.displayMode)}</select></label>`
+  const libPicker = (r, i, hint = 'Häkchen = wird angezeigt (wie im Emby-Editor). Platzhalter und Live TV werden pro Benutzer aufgelöst.') => `
+    <label class="field" style="margin:10px 0 4px"><span>In dieser Zeile angezeigte Bibliotheken</span></label>
+    <div class="checklist" data-rowlib="${i}">${checkTools()}${libChoices.map(([v, l]) => `<label class="check"><input type="checkbox" data-rowlib-value="${esc(v)}"${checked(libShown(r.libraries, v))}> ${esc(l)}</label>`).join('')}</div>
+    <label class="check"><input type="checkbox" data-rowlib-auto="${i}"${checked(r.libraries.mode !== 'only')}> Bibliotheken, die später dazukommen, automatisch anzeigen</label>
+    <p class="hint">${hint}</p>`
+  const boxsetLibHint = 'Die Zeile zeigt nur die Inhalte der Kollektion, die in den angehakten Bibliotheken liegen (wie das Feld „Bibliotheken“ im Emby-Editor).'
   const randomBoxsetHint = (row) => (row.sortBy === 'Random' ? '<div class="alert info small">Die Emby-Oberfläche bietet „Zufällig“ für Kollektionszeilen nicht an, der Server speichert SortBy aber frei. Ob die Zeile wirklich mischt, an einem Testbenutzer prüfen (Diagnose → Snapshot, dann Startseite zweimal laden).</div>' : '')
 
   function rowSummary(r) {
     if (r.kind === 'section') return `${meta.sectionTypes[r.sectionType] || r.sectionType}${r.customName ? ` „${r.customName}“` : ''}${filterSummary(r.libraries)}`
     if (r.kind === 'aperture') return `Eigene Aperture-${r.mediaType === 'series' ? 'Serien' : 'Filme'}${r.apertureStyle === 'latest' ? ' (Neu hinzugefügt)' : ''}`
-    if (r.kind === 'collection') return `Kollektion: ${r.customName || r.collectionName || '(keine gewählt)'}`
-    if (r.kind === 'seasonal') return `Saisonal: ${r.collectionName || '(kein Name)'}${r.season?.from ? ` · ${r.season.from} bis ${r.season.to}` : ''}`
-    return `Rotationsplatz${r.customName ? ` „${r.customName}“` : ''}`
+    if (r.kind === 'collection') return `Kollektion: ${r.customName || r.collectionName || collections.find((c) => c.id === r.collectionId)?.name || '(keine gewählt)'}${filterSummary(r.libraries)}`
+    if (r.kind === 'seasonal') return `Saisonal: ${r.collectionName || '(kein Name)'}${r.season?.from ? ` · ${r.season.from} bis ${r.season.to}` : ''}${filterSummary(r.libraries)}`
+    return `Rotationsplatz${r.customName ? ` „${r.customName}“` : ''}${filterSummary(r.libraries)}`
   }
 
   function rowEditor(r, i) {
@@ -687,10 +693,7 @@ async function pageTemplateEdit(view, templateId) {
         ${commonFields(r, i, { view: r.sectionType === 'userviews' ? [['', 'Karten'], ['buttons', 'Schaltflächen']] : [['', 'Karten'], ['spotlight', 'Spotlight']] })}
       </div>
       ${r.sectionType === 'resume' ? `<label class="check"><input type="checkbox" data-bind="config.rows.${i}.includeNextUp"${checked(r.includeNextUp)}> „Als Nächstes“ in Weiterschauen einbeziehen</label>` : ''}
-      <label class="field" style="margin:10px 0 4px"><span>In dieser Zeile angezeigte Bibliotheken</span></label>
-      <div class="checklist" data-rowlib="${i}">${checkTools()}${libChoices.map(([v, l]) => `<label class="check"><input type="checkbox" data-rowlib-value="${esc(v)}"${checked(libShown(r.libraries, v))}> ${esc(l)}</label>`).join('')}</div>
-      <label class="check"><input type="checkbox" data-rowlib-auto="${i}"${checked(r.libraries.mode !== 'only')}> Bibliotheken, die später dazukommen, automatisch anzeigen</label>
-      <p class="hint">Häkchen = wird angezeigt (wie im Emby-Editor). Platzhalter und Live TV werden pro Benutzer aufgelöst.</p>`
+      ${libPicker(r, i)}`
     }
     if (r.kind === 'aperture') {
       return `<div class="row-fields">
@@ -703,7 +706,7 @@ async function pageTemplateEdit(view, templateId) {
       return `<div class="row-fields">
         <label class="field"><span>Kollektion</span><select data-bind="config.rows.${i}.collectionId" data-rerender>${opt('', '– wählen –', r.collectionId)}${collections.filter((c) => c.id).map((c) => opt(c.id, `${c.name} (${c.childCount ?? '?'})`, r.collectionId)).join('')}</select></label>
         ${base}${sortSelect(r, i, COLLECTION_SORTS)}${commonFields(r, i)}
-      </div>${randomBoxsetHint(r)}`
+      </div>${libPicker(r, i, boxsetLibHint)}${randomBoxsetHint(r)}`
     }
     if (r.kind === 'seasonal') {
       return `<div class="row-fields">
@@ -711,10 +714,10 @@ async function pageTemplateEdit(view, templateId) {
         <label class="field"><span>Saison von (MM-TT)</span><input data-bind="config.rows.${i}.season.from" value="${esc(r.season?.from || '')}" placeholder="optional, z. B. 12-01"></label>
         <label class="field"><span>Saison bis (MM-TT)</span><input data-bind="config.rows.${i}.season.to" value="${esc(r.season?.to || '')}" placeholder="12-26"></label>
         ${base}${sortSelect(r, i, COLLECTION_SORTS)}${commonFields(r, i)}
-      </div><p class="hint">Sichtbar nur, wenn die Kollektion existiert, Inhalte hat und der Benutzer den Großteil davon sehen darf. Ohne eigenes Zeitfenster gilt das von Ultimate Collections (falls bekannt).</p>${randomBoxsetHint(r)}`
+      </div><p class="hint">Sichtbar nur, wenn die Kollektion existiert, Inhalte hat und der Benutzer den Großteil davon sehen darf. Ohne eigenes Zeitfenster gilt das von Ultimate Collections (falls bekannt).</p>${libPicker(r, i, boxsetLibHint)}${randomBoxsetHint(r)}`
     }
     return `<div class="row-fields">${base}${sortSelect(r, i, COLLECTION_SORTS)}${commonFields(r, i)}</div>
-      <p class="hint">Wird mit einer Kollektion aus dem Rotations-Pool belegt; aktive saisonale Kollektionen haben Vorrang.</p>${randomBoxsetHint(r)}`
+      <p class="hint">Wird mit einer Kollektion aus dem Rotations-Pool belegt; aktive saisonale Kollektionen haben Vorrang.</p>${libPicker(r, i, boxsetLibHint + ' Gilt für jede Kollektion, die auf diesem Platz landet.')}${randomBoxsetHint(r)}`
   }
 
   function renderRows() {
@@ -867,7 +870,8 @@ async function pageTemplateEdit(view, templateId) {
     addRow: ({ kind }) => {
       const id = 'r' + Math.random().toString(16).slice(2, 10)
       const row = { id, kind, customName: '', sortBy: '', sortOrder: '', viewType: '', imageType: '', scrollDirection: '', displayMode: '', cardSizeOffset: 0 }
-      if (kind === 'section') Object.assign(row, { sectionType: 'latestmediablock', itemTypes: [], includeNextUp: true, libraries: { mode: 'all', guids: [] }, query: {} })
+      if (kind !== 'aperture') row.libraries = { mode: 'all', guids: [] }
+      if (kind === 'section') Object.assign(row, { sectionType: 'latestmediablock', itemTypes: [], includeNextUp: true, query: {} })
       if (kind === 'aperture') Object.assign(row, { mediaType: 'movies', apertureStyle: 'items' })
       if (kind === 'collection') Object.assign(row, { collectionId: '', collectionName: '' })
       if (kind === 'seasonal') Object.assign(row, { collectionName: '', season: { from: '', to: '' } })

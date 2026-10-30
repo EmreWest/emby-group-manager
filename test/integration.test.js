@@ -203,6 +203,27 @@ test('row library filter "only": shown libraries stay, everything else (incl. Li
   await call('PUT', `/api/templates/${templateId}`, t)
 })
 
+test('collection rows have a library filter too (boxset ExcludedFolders), imported back from Emby', async () => {
+  const st = mock.state
+  const t = await call('GET', `/api/templates/${templateId}`)
+  assert.deepEqual(t.config.rows.find((r) => r.kind === 'collection').libraries, { mode: 'all', guids: [] }, 'older rows get the default filter')
+  t.config.rows.push({ kind: 'collection', collectionId: 'c2', customName: 'Nur Filme', libraries: { mode: 'only', guids: [st.movies.Guid] } })
+  const saved = await call('PUT', `/api/templates/${templateId}`, t)
+  const col = saved.config.rows.at(-1)
+  const p = await call('POST', `/api/templates/${templateId}/preview`, { when: 'today', userId: st.emre.Id })
+  assert.deepEqual(p.rows.find((r) => r.rowId === col.id).libraries, ['Filme'])
+  await call('POST', `/api/layout-groups/${layoutId}/apply`, {})
+  const ex = st.homeSections.get(st.emre.Id).find((s) => s.CustomName === 'Nur Filme').ExcludedFolders
+  assert.ok(ex.length && !ex.includes(st.movies.ItemId) && ex.includes(st.series.ItemId), JSON.stringify(ex))
+  const imported = await call('POST', '/api/templates/from-user', { userId: st.emre.Id, name: 'Emre mit Kollektionsfilter' })
+  const back = imported.config.rows.find((r) => r.customName === 'Nur Filme')
+  assert.equal(back.kind, 'collection')
+  assert.equal(back.libraries.mode, 'except')
+  assert.ok(!back.libraries.guids.includes(st.movies.Guid) && back.libraries.guids.includes(st.series.Guid))
+  saved.config.rows.pop()
+  await call('PUT', `/api/templates/${templateId}`, saved)
+})
+
 test('preview for tomorrow / next week and reroll', async () => {
   const st = mock.state
   for (const when of ['today', 'tomorrow', 'nextweek']) {

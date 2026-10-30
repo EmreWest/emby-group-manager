@@ -20,7 +20,7 @@ import { inSeason } from './seasons.js'
 const norm = (s) => String(s || '').toLowerCase().replace(/-/g, '')
 const uniq = (a) => [...new Set(a)]
 const viewKey = (v) => v.Guid || v.Id
-const LIBRARY_ROWS = ['userviews', 'resume', 'resumeaudio', 'latestmediablock', 'latestmoviereleases', 'latestepisodereleases', 'items', 'collections', 'playlists']
+const LIBRARY_ROWS = ['userviews', 'resume', 'resumeaudio', 'latestmediablock', 'latestmoviereleases', 'latestepisodereleases', 'items', 'collections', 'playlists', 'boxset']
 const EDITABLE = ['SectionType', 'CustomName', 'Subtitle', 'ViewType', 'ImageType', 'DisplayMode', 'ScrollDirection', 'ParentId', 'SortBy', 'SortOrder', 'ItemTypes', 'IncludeNextUpInResume', 'ExcludedFolders', 'Query', 'CardSizeOffset', 'RefreshInterval']
 const LEGACY_IDS = new Set(['smalllibrarytiles', 'librarybuttons', 'librarytiles', 'resume', 'resumeaudio', 'livetv', 'onnow', 'latestmedia', 'latestmediablock', 'nextup', 'none', 'activerecordings', 'latestmoviereleases', 'latestepisodereleases', 'collections', 'playlists'])
 const CONFIG_KEYS = ['OrderedViews', 'MyMediaExcludes', 'LatestItemsExcludes', 'HidePlayedInLatest']
@@ -92,25 +92,28 @@ export async function resolveTemplate(template, { state, user = null, views = nu
   let slotIndex = 0
   const rows = []
   const add = (row, section, label, extra = {}) => rows.push({ rowId: row.id, kind: row.kind, label, section, ...extra })
+  // The row's library filter as Emby's ExcludedFolders (view ids, sorted so re-applying stays idempotent).
+  // null: none of the chosen libraries is visible to this user, so the row is left out.
+  const excludedFor = (row) => {
+    if (!views || !row.libraries) return []
+    if (row.libraries.mode === 'only') {
+      const keep = new Set(viewIds(row.libraries.guids))
+      return keep.size ? views.filter((v) => !keep.has(v.Id)).map((v) => v.Id).sort() : null
+    }
+    return row.libraries.mode === 'except' ? uniq(viewIds(row.libraries.guids)).sort() : []
+  }
+  const NO_LIBRARY = 'Keine der gewählten Bibliotheken ist für diesen Benutzer sichtbar'
+  const boxset = (row, id, customName = row.customName || null) => ({ ...baseSection(row), SectionType: 'boxset', ParentId: id, CustomName: customName, ExcludedFolders: excludedFor(row) })
 
   for (const row of cfg.rows) {
     if (row.kind === 'section') {
       const s = { ...baseSection(row), SectionType: row.sectionType, ItemTypes: row.itemTypes, IncludeNextUpInResume: row.includeNextUp, Query: { ...row.query } }
       if (cfg.hidePlayedInLatest && row.sectionType === 'latestmediablock') s.Query.IsPlayed = false
       const label = row.customName || SECTION_TYPES[row.sectionType] || row.sectionType
-      if (views) {
-        let excluded = []
-        if (row.libraries.mode === 'only') {
-          const keep = new Set(viewIds(row.libraries.guids))
-          if (!keep.size) {
-            add(row, null, label, { note: 'Keine der gewählten Bibliotheken ist für diesen Benutzer sichtbar' })
-            continue
-          }
-          excluded = views.filter((v) => !keep.has(v.Id)).map((v) => v.Id)
-        } else if (row.libraries.mode === 'except') {
-          excluded = viewIds(row.libraries.guids)
-        }
-        s.ExcludedFolders = uniq(excluded).sort()
+      s.ExcludedFolders = excludedFor(row)
+      if (!s.ExcludedFolders) {
+        add(row, null, label, { note: NO_LIBRARY })
+        continue
       }
       add(row, s, label)
     } else if (row.kind === 'aperture') {
@@ -149,7 +152,9 @@ export async function resolveTemplate(template, { state, user = null, views = nu
         add(row, null, row.customName || c.name, { note: 'Kollektion ist leer – ausgeblendet', hidden: true })
         continue
       }
-      add(row, { ...baseSection(row), SectionType: 'boxset', ParentId: c.id }, row.customName || c.name)
+      const s = boxset(row, c.id)
+      if (!s.ExcludedFolders) add(row, null, row.customName || c.name, { note: NO_LIBRARY, hidden: true })
+      else add(row, s, row.customName || c.name)
     } else if (row.kind === 'seasonal') {
       const c = cctx.find({ name: row.collectionName })
       const window = row.season?.from ? row.season : c?.uc?.season || null
@@ -160,7 +165,8 @@ export async function resolveTemplate(template, { state, user = null, views = nu
         continue
       }
       const usable = await cctx.usable(c, userId, rot.minVisibleRatio)
-      if (usable) add(row, { ...baseSection(row), SectionType: 'boxset', ParentId: c.id }, row.customName || c.name, { predicted: !today })
+      if (usable && !excludedFor(row)) add(row, null, label, { note: NO_LIBRARY, hidden: true })
+      else if (usable) add(row, boxset(row, c.id), row.customName || c.name, { predicted: !today })
       else if (!today && on) add(row, null, label, { note: 'Saison aktiv – Kollektion wird voraussichtlich angelegt', predicted: true })
       else add(row, null, label, { note: c?.id ? 'Leer oder für diesen Benutzer größtenteils gesperrt – ausgeblendet' : 'Existiert nicht – ausgeblendet', hidden: true })
     } else if (row.kind === 'rotation') {
@@ -171,7 +177,8 @@ export async function resolveTemplate(template, { state, user = null, views = nu
       }
       const extra = { source: slot.source, predicted: !!slot.predicted }
       if (!slot.collection) add(row, null, `${slot.name} (Saison)`, { ...extra, note: 'Wird voraussichtlich angelegt' })
-      else add(row, { ...baseSection(row), SectionType: 'boxset', ParentId: slot.collection.id, CustomName: row.customName || null }, slot.collection.name, extra)
+      else if (!excludedFor(row)) add(row, null, slot.collection.name, { ...extra, note: NO_LIBRARY, hidden: true })
+      else add(row, boxset(row, slot.collection.id), slot.collection.name, extra)
     }
   }
 
@@ -356,13 +363,14 @@ export async function templateFromUser(state, userId) {
   const rows = sections.map((s) => {
     const shown = views.filter((v) => !(s.ExcludedFolders || []).some((x) => norm(x) === norm(v.Id) || norm(x) === norm(v.Guid)))
     const common = { id: newRowId(), customName: s.CustomName || '', subtitle: s.Subtitle || '', viewType: s.ViewType || '', imageType: s.ImageType || '', scrollDirection: s.ScrollDirection || '', displayMode: s.DisplayMode || '', sortBy: s.SortBy || '', sortOrder: s.SortOrder || '', cardSizeOffset: s.CardSizeOffset || 0 }
-    if (s.SectionType === 'boxset' && s.ParentId) return { ...common, kind: 'collection', collectionId: s.ParentId, collectionName: s.ParentItem?.Name || s.Name || '' }
+    const excluded = tokens(s.ExcludedFolders)
+    const libraries = { mode: excluded.length ? 'except' : 'all', guids: excluded }
+    if (s.SectionType === 'boxset' && s.ParentId) return { ...common, kind: 'collection', collectionId: s.ParentId, collectionName: s.ParentItem?.Name || s.Name || '', libraries }
     if (['items', 'latestmediablock'].includes(s.SectionType) && shown.length === 1) {
       const ap = own.find((l) => norm(l.guid) === norm(shown[0].Guid) || norm(l.itemId) === norm(shown[0].Id))
       if (ap) return { ...common, kind: 'aperture', mediaType: ap.aperture.mediaType, apertureStyle: s.SectionType === 'latestmediablock' ? 'latest' : 'items', customName: s.CustomName === ap.name ? '' : common.customName }
     }
-    const excluded = tokens(s.ExcludedFolders)
-    return { ...common, kind: 'section', sectionType: s.SectionType, itemTypes: s.ItemTypes || [], includeNextUp: s.IncludeNextUpInResume !== false, libraries: { mode: excluded.length ? 'except' : 'all', guids: excluded }, query: s.Query || {} }
+    return { ...common, kind: 'section', sectionType: s.SectionType, itemTypes: s.ItemTypes || [], includeNextUp: s.IncludeNextUpInResume !== false, libraries, query: s.Query || {} }
   })
   const c = user.Configuration || {}
   const landing = {}
