@@ -141,9 +141,15 @@ tr.click:hover td { background: var(--panel-2); }
 .alert.ok { background: var(--accent-soft); color: var(--accent); }
 .dry-banner { background: var(--warn-soft); color: var(--warn); padding: 8px 28px; font-weight: 600; border-bottom: 1px solid var(--border); }
 
-.rows-editor .trow { display: grid; grid-template-columns: 32px 1fr auto; gap: 10px; align-items: center; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; margin-bottom: 6px; background: var(--panel-2); }
+.rows-editor .trow { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; margin-bottom: 6px; background: var(--panel-2); }
 .rows-editor .trow.open { border-color: var(--accent); }
-.rows-editor .num { color: var(--muted); font-weight: 700; text-align: center; }
+.rows-editor .num { display: flex; align-items: center; gap: 2px; }
+.rows-editor .drag { display: flex; padding: 4px 2px; color: var(--muted); cursor: grab; touch-action: none; user-select: none; }
+.rows-editor .drag .i { fill: currentColor; }
+.rows-editor .pos { width: 54px; padding: 4px 6px; text-align: center; font-weight: 700; }
+.rows-editor .trow.dragging { opacity: .5; }
+.rows-editor .trow.drop-before { box-shadow: 0 -3px 0 var(--accent); }
+.rows-editor .trow.drop-after { box-shadow: 0 3px 0 var(--accent); }
 .rows-editor .edit { grid-column: 1 / -1; border-top: 1px dashed var(--border); padding-top: 10px; margin-top: 4px; }
 .preview-list { list-style: none; padding: 0; margin: 0; }
 .preview-list li { padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; margin-bottom: 6px; display: flex; justify-content: space-between; gap: 10px; }
@@ -197,7 +203,7 @@ tr.click:hover td { background: var(--panel-2); }
   .grid.cols-2 { grid-template-columns: minmax(0, 1fr); }
   .kv { grid-template-columns: minmax(0, 1fr); }
   .kv dd { margin-bottom: 6px; }
-  .rows-editor .trow { grid-template-columns: 24px minmax(0, 1fr); }
+  .rows-editor .trow { grid-template-columns: auto minmax(0, 1fr); }
   .rows-editor .trow > .actions { grid-column: 1 / -1; justify-content: flex-end; }
   .preview-list li { flex-wrap: wrap; }
   .dry-banner { padding: 8px 14px; }

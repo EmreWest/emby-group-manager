@@ -210,6 +210,7 @@ const ICON_PATHS = {
   logout: '<path d="M15 4h4a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1h-4M10 17l5-5-5-5M15 12H3"/>',
   panel: '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16"/>',
   menu: '<path d="M4 6h16M4 12h16M4 18h16"/>',
+  grip: '<circle cx="9" cy="6" r=".8"/><circle cx="15" cy="6" r=".8"/><circle cx="9" cy="12" r=".8"/><circle cx="15" cy="12" r=".8"/><circle cx="9" cy="18" r=".8"/><circle cx="15" cy="18" r=".8"/>',
 }
 const icon = (name, cls = '') => `<svg class="i ${cls}" viewBox="0 0 24 24" aria-hidden="true">${ICON_PATHS[name] || ''}</svg>`
 
@@ -770,8 +771,8 @@ async function pageTemplateEdit(view, templateId) {
 
   function renderRows() {
     return `<div class="rows-editor">
-      ${draft.config.rows.map((r, i) => `<div class="trow ${openRow === r.id ? 'open' : ''}">
-        <div class="num">${i + 1}</div>
+      ${draft.config.rows.map((r, i, all) => `<div class="trow ${openRow === r.id ? 'open' : ''}">
+        <div class="num"><span class="drag" data-drag="${i}" title="Ziehen zum Verschieben">${icon('grip')}</span><input class="pos" type="number" min="1" max="${all.length}" value="${i + 1}" data-pos="${i}" aria-label="Position" title="Position eingeben"></div>
         <div>${badge(KIND_LABELS[r.kind], KIND_BADGE[r.kind])} ${esc(rowSummary(r))} ${r.sortBy === 'Random' ? badge('zufällig') : ''}</div>
         <div class="actions"><button class="icon" data-action="up" data-i="${i}" title="Nach oben">↑</button><button class="icon" data-action="down" data-i="${i}" title="Nach unten">↓</button><button class="icon" data-action="toggle" data-id="${r.id}" title="Bearbeiten">✎</button><button class="icon danger" data-action="removeRow" data-i="${i}" title="Entfernen">✕</button></div>
         ${openRow === r.id ? `<div class="edit">${rowEditor(r, i)}</div>` : ''}
@@ -906,6 +907,52 @@ async function pageTemplateEdit(view, templateId) {
     if (j < 0 || j >= arr.length) return
     ;[arr[i], arr[j]] = [arr[j], arr[i]]
   }
+  const moveTo = (arr, from, to) => {
+    to = Math.min(arr.length - 1, Math.max(0, to))
+    if (to !== from) arr.splice(to, 0, ...arr.splice(from, 1))
+  }
+  // Position field: type the new place of a row (1 = top).
+  view.addEventListener('change', (e) => {
+    const pos = e.target.closest('[data-pos]')
+    if (!pos) return
+    const to = Number(pos.value)
+    if (Number.isFinite(to)) moveTo(draft.config.rows, Number(pos.dataset.pos), Math.round(to) - 1)
+    render()
+  })
+  // Drag and drop by the grip, with pointer events so it works with a mouse and with a finger.
+  view.addEventListener('pointerdown', (e) => {
+    const handle = e.target.closest('[data-drag]')
+    if (!handle || e.button > 0) return
+    e.preventDefault()
+    const rows = $$('.rows-editor > .trow', view)
+    const from = Number(handle.dataset.drag)
+    let to = from
+    rows[from].classList.add('dragging')
+    handle.setPointerCapture(e.pointerId)
+    const onMove = (ev) => {
+      to = rows.findIndex((r) => {
+        const b = r.getBoundingClientRect()
+        return ev.clientY < b.top + b.height / 2
+      })
+      if (to === -1) to = rows.length
+      rows.forEach((r, i) => {
+        r.classList.toggle('drop-before', i === to && to !== from && to !== from + 1)
+        r.classList.toggle('drop-after', i === rows.length - 1 && to === rows.length && from !== rows.length - 1)
+      })
+      if (ev.clientY < 70) window.scrollBy(0, -14)
+      else if (ev.clientY > window.innerHeight - 70) window.scrollBy(0, 14)
+    }
+    const onUp = () => {
+      handle.removeEventListener('pointermove', onMove)
+      handle.removeEventListener('pointerup', onUp)
+      handle.removeEventListener('pointercancel', onUp)
+      moveTo(draft.config.rows, from, to > from ? to - 1 : to)
+      render()
+    }
+    handle.addEventListener('pointermove', onMove)
+    handle.addEventListener('pointerup', onUp)
+    handle.addEventListener('pointercancel', onUp)
+  })
   onActions(view, {
     tab: ({ tab: k }) => {
       tab = k
