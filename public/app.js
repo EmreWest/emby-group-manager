@@ -196,20 +196,59 @@ const NAV = [
   ['backups', 'Backups'], ['diagnose', 'Diagnose'], ['protokoll', 'Protokoll'], ['einstellungen', 'Einstellungen'],
 ]
 
+const ICON_PATHS = {
+  '': '<rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/>',
+  benutzer: '<circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 3.6-6 8-6s8 2 8 6"/>',
+  bibliotheken: '<path d="M4 4h4v16H4zM10 4h4v16h-4zM16.5 4.5l3.8 1-3.6 14.5-3.8-1z"/>',
+  gruppen: '<path d="M12 3 2 8l10 5 10-5-10-5z"/><path d="m2 12 10 5 10-5"/><path d="m2 16 10 5 10-5"/>',
+  vorlagen: '<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/>',
+  layouts: '<circle cx="9" cy="8" r="3.5"/><path d="M2 20c0-3.5 3-5.5 7-5.5s7 2 7 5.5"/><path d="M16 4.5a3.5 3.5 0 0 1 0 7M18 14.5c2.4.6 4 2.4 4 5.5"/>',
+  backups: '<rect x="3" y="4" width="18" height="5" rx="1"/><path d="M5 9v10a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V9M10 13h4"/>',
+  diagnose: '<path d="M3 12h4l3-8 4 16 3-8h4"/>',
+  protokoll: '<path d="M8 6h13M8 12h13M8 18h13M3.5 6h.01M3.5 12h.01M3.5 18h.01"/>',
+  einstellungen: '<path d="M4 6h9M17 6h3M4 12h3M11 12h9M4 18h11M19 18h1"/><circle cx="15" cy="6" r="2"/><circle cx="9" cy="12" r="2"/><circle cx="17" cy="18" r="2"/>',
+  logout: '<path d="M15 4h4a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1h-4M10 17l5-5-5-5M15 12H3"/>',
+  panel: '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16"/>',
+  menu: '<path d="M4 6h16M4 12h16M4 18h16"/>',
+}
+const icon = (name, cls = '') => `<svg class="i ${cls}" viewBox="0 0 24 24" aria-hidden="true">${ICON_PATHS[name] || ''}</svg>`
+
+// Sidebar: on wide screens it collapses to an icon rail (remembered per browser), on phones it is a top bar
+// whose menu opens as a list.
+const MOBILE = window.matchMedia('(max-width: 860px)')
+let navCollapsed = false
+try {
+  navCollapsed = localStorage.getItem('egm-nav-collapsed') === '1'
+} catch {}
+
 function renderShell() {
   const route = location.hash.replace(/^#\/?/, '').split('/')[0]
   $('#app').innerHTML = `
-    <div class="layout">
+    <div class="layout${navCollapsed ? ' collapsed' : ''}">
       <nav class="side">
-        <div class="brand"><img src="favicon.svg" alt=""> Emby Group Manager</div>
-        ${NAV.map(([k, l]) => (k === '-' ? '<div class="sep"></div>' : `<a href="#/${k}" class="${route === k ? 'active' : ''}">${l}</a>`)).join('')}
-        <div class="foot">Angemeldet als <b>${esc(me.name)}</b><br><a href="#" id="logout">Abmelden</a></div>
+        <div class="brand"><img src="favicon.svg" alt=""><span class="name">Emby Group Manager</span>
+          <button class="nav-toggle" id="nav-toggle" aria-label="Menü" title="Seitenleiste ein-/ausklappen">${icon('panel', 'i-panel')}${icon('menu', 'i-menu')}</button></div>
+        <div class="menu">
+          ${NAV.map(([k, l]) => (k === '-' ? '<div class="sep"></div>' : `<a href="#/${k}" class="${route === k ? 'active' : ''}" title="${l}">${icon(k)}<span class="label">${l}</span></a>`)).join('')}
+          <div class="foot"><div class="who">Angemeldet als <b>${esc(me.name)}</b></div><a href="#" id="logout" title="Abmelden">${icon('logout')}<span class="label">Abmelden</span></a></div>
+        </div>
       </nav>
       <div>
         ${status?.dryRun ? '<div class="dry-banner">Dry-Run aktiv: Änderungen werden nur protokolliert, nicht an Emby gesendet.</div>' : ''}
         <main id="view"><div class="muted">Lade …</div></main>
       </div>
     </div>`
+  const layout = $('.layout')
+  $('#nav-toggle').onclick = () => {
+    if (MOBILE.matches) return layout.classList.toggle('nav-open')
+    navCollapsed = !navCollapsed
+    layout.classList.toggle('collapsed', navCollapsed)
+    try {
+      localStorage.setItem('egm-nav-collapsed', navCollapsed ? '1' : '0')
+    } catch {}
+  }
+  // tapping the page you are on does not change the hash, so close the phone menu here as well
+  $('.menu').addEventListener('click', (e) => e.target.closest('a') && layout.classList.remove('nav-open'))
   $('#logout').onclick = async (e) => {
     e.preventDefault()
     await POST('/api/auth/logout')
@@ -281,6 +320,15 @@ async function boot() {
 }
 
 window.addEventListener('hashchange', route)
+// On phones tables are shown as one card per row; each cell gets its column name as a label (styles.css).
+function labelCells(root) {
+  for (const table of root.querySelectorAll('table')) {
+    const heads = [...table.querySelectorAll(':scope > thead th')].map((th) => th.textContent.trim())
+    if (!heads.length) continue
+    for (const tr of table.querySelectorAll(':scope > tbody > tr')) [...tr.children].forEach((td, i) => td.dataset.label === undefined && td.setAttribute('data-label', heads[i] || ''))
+  }
+}
+new MutationObserver(() => labelCells(document)).observe($('#app'), { childList: true, subtree: true })
 boot().catch((e) => ($('#app').innerHTML = `<div class="boot">${esc(e.message)}</div>`))
 
 // ---------------------------------------------------------------- dashboard
@@ -794,13 +842,13 @@ async function pageTemplateEdit(view, templateId) {
       <div class="page-head"><div><a href="#/vorlagen">← Vorlagen</a><h1>${isNew ? 'Neue Vorlage' : esc(t.name)}</h1></div>
         <div class="actions">${isNew ? '' : '<button class="danger" data-action="delete">Löschen</button><button data-action="reroll">Jetzt neu würfeln</button>'}<button class="primary" data-action="save">Speichern</button></div></div>
       <datalist id="col-names">${collections.map((c) => `<option value="${esc(c.name)}">`).join('')}</datalist>
-      <div class="grid" style="grid-template-columns: minmax(0, 3fr) minmax(280px, 2fr); align-items:start">
+      <div class="grid editor-grid">
         <div class="card">
           <div class="row-fields"><label class="field"><span>Name</span><input data-bind="name" value="${esc(draft.name)}"></label><label class="field"><span>Beschreibung</span><input data-bind="description" value="${esc(draft.description)}"></label></div>
           <div class="tabs">${[['rows', 'Zeilen'], ['libs', 'Bibliotheken'], ['rotation', 'Rotation & Saison']].map(([k, l]) => `<button data-action="tab" data-tab="${k}" class="${tab === k ? 'active' : ''}">${l}</button>`).join('')}</div>
           <div id="tab-body">${tab === 'rows' ? renderRows() : tab === 'libs' ? renderLibraries() : renderRotation()}</div>
         </div>
-        <div class="card" style="position:sticky;top:16px">
+        <div class="card sticky-card">
           <h2>Vorschau</h2>
           <div class="row-fields">
             <label class="field"><span>Zeitpunkt</span><select id="pv-when">${options([['today', 'Heute'], ['tomorrow', 'Morgen'], ['nextweek', 'Nächste Woche']], 'today')}</select></label>

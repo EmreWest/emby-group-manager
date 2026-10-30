@@ -54,16 +54,33 @@ code, pre { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-si
 pre { background: var(--panel-2); border: 1px solid var(--border); padding: 10px; border-radius: 8px; overflow: auto; max-height: 60vh; }
 
 .boot { padding: 40px; color: var(--muted); }
-.layout { display: grid; grid-template-columns: 230px 1fr; min-height: 100vh; }
-nav.side { background: var(--panel); border-right: 1px solid var(--border); padding: 16px 10px; position: sticky; top: 0; height: 100vh; overflow-y: auto; }
-nav.side .brand { display: flex; gap: 10px; align-items: center; font-weight: 700; padding: 4px 10px 16px; }
+.layout { display: grid; grid-template-columns: 230px minmax(0, 1fr); min-height: 100vh; }
+nav.side { background: var(--panel); border-right: 1px solid var(--border); padding: 14px 10px; position: sticky; top: 0; height: 100vh; display: flex; flex-direction: column; }
+nav.side .brand { display: flex; gap: 10px; align-items: center; font-weight: 700; padding: 0 0 14px 10px; }
 nav.side .brand img { width: 28px; height: 28px; }
-nav.side a { display: block; padding: 8px 12px; border-radius: 8px; color: var(--text); margin-bottom: 2px; }
+nav.side .brand .name { flex: 1; min-width: 0; }
+.nav-toggle { border: none; background: none; padding: 6px; color: var(--muted); }
+.nav-toggle .i-menu { display: none; }
+nav.side .menu { flex: 1; overflow-y: auto; display: flex; flex-direction: column; }
+nav.side a { display: flex; gap: 10px; align-items: center; padding: 8px 12px; border-radius: 8px; color: var(--text); margin-bottom: 2px; white-space: nowrap; }
 nav.side a:hover { background: var(--panel-2); text-decoration: none; }
 nav.side a.active { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
-nav.side .sep { height: 1px; background: var(--border); margin: 10px 6px; }
-nav.side .foot { margin-top: 16px; padding: 0 12px; color: var(--muted); font-size: 12px; }
+nav.side a .i { color: var(--muted); }
+nav.side a.active .i { color: var(--accent); }
+nav.side .sep { height: 1px; background: var(--border); margin: 10px 6px; flex: none; }
+nav.side .foot { margin-top: auto; padding-top: 16px; }
+nav.side .foot .who { padding: 0 12px 6px; color: var(--muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; }
+svg.i { width: 18px; height: 18px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+@media (min-width: 861px) {
+  .layout.collapsed { grid-template-columns: 60px minmax(0, 1fr); }
+  .layout.collapsed nav.side { padding: 14px 8px; }
+  .layout.collapsed nav.side .brand { justify-content: center; padding: 0 0 14px; }
+  .layout.collapsed nav.side .brand img, .layout.collapsed nav.side .brand .name, .layout.collapsed nav.side .label, .layout.collapsed nav.side .who { display: none; }
+  .layout.collapsed nav.side a { justify-content: center; padding: 9px 0; }
+}
 main { padding: 24px 28px 60px; max-width: 1400px; }
+.editor-grid { grid-template-columns: minmax(0, 3fr) minmax(280px, 2fr); align-items: start; }
+.sticky-card { position: sticky; top: 16px; }
 .page-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; margin-bottom: 18px; flex-wrap: wrap; }
 .page-head .sub { color: var(--muted); }
 .actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
@@ -147,10 +164,43 @@ tr.click:hover td { background: var(--panel-2); }
 .login { max-width: 380px; margin: 12vh auto; }
 .login .card { padding: 28px; }
 
+@media (max-width: 1100px) {
+  .editor-grid { grid-template-columns: minmax(0, 1fr); }
+  .sticky-card { position: static; }
+}
 @media (max-width: 860px) {
-  .layout { grid-template-columns: 1fr; }
-  nav.side { position: static; height: auto; display: flex; flex-wrap: wrap; gap: 4px; }
-  nav.side .sep, nav.side .foot { display: none; }
-  main { padding: 16px; }
-  .grid.cols-2 { grid-template-columns: 1fr; }
+  .layout { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto 1fr; }
+  nav.side { height: auto; z-index: 40; border-right: none; border-bottom: 1px solid var(--border); padding: 8px 12px; }
+  nav.side .brand { padding: 0; }
+  .nav-toggle { padding: 8px; }
+  .nav-toggle .i-menu { display: block; width: 22px; height: 22px; }
+  .nav-toggle .i-panel { display: none; }
+  nav.side .menu { display: none; }
+  .layout.nav-open nav.side .menu { display: flex; max-height: calc(100vh - 56px); padding: 8px 0 4px; }
+  nav.side a { padding: 12px; font-size: 15px; }
+  nav.side .foot { padding-top: 6px; border-top: 1px solid var(--border); margin-top: 8px; }
+  nav.side .foot .who { padding: 6px 12px 0; }
+  main { padding: 16px 14px 48px; }
+  h1 { font-size: 19px; }
+  input, select, textarea { font-size: 16px; }
+  .card { padding: 12px; overflow-x: auto; }
+  .modal { overflow-x: auto; padding: 14px; }
+  .modal-back { padding: 12px 8px; }
+  table:has(> thead) > thead { display: none; }
+  table:has(> thead), table:has(> thead) > tbody, table:has(> thead) > tbody > tr { display: block; }
+  table:has(> thead) > tbody > tr { border-bottom: 1px solid var(--border); padding: 8px 0; }
+  table:has(> thead) > tbody > tr > td { display: block; position: relative; border: none; padding: 3px 0 3px 120px; min-height: 24px; }
+  table:has(> thead) > tbody > tr > td::before { content: attr(data-label); position: absolute; left: 0; top: 5px; width: 110px; color: var(--muted); font-size: 12px; font-weight: 600; }
+  table:has(> thead) > tbody > tr > td:is([data-label=""], [colspan]) { padding-left: 0; min-height: 0; }
+  table:has(> thead) > tbody > tr > td:is([data-label=""], [colspan])::before { content: none; }
+  th, td { padding: 7px 8px; }
+  .grid.cols-2 { grid-template-columns: minmax(0, 1fr); }
+  .kv { grid-template-columns: minmax(0, 1fr); }
+  .kv dd { margin-bottom: 6px; }
+  .rows-editor .trow { grid-template-columns: 24px minmax(0, 1fr); }
+  .rows-editor .trow > .actions { grid-column: 1 / -1; justify-content: flex-end; }
+  .preview-list li { flex-wrap: wrap; }
+  .dry-banner { padding: 8px 14px; }
+  #toasts { left: 12px; right: 12px; }
+  .toast { max-width: none; }
 }
